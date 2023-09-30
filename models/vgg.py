@@ -1,5 +1,6 @@
 import torch.nn as nn
 import torch.nn.functional as F
+import tensorflow as tf
 
 
 class VggFeatures(nn.Module):
@@ -66,7 +67,7 @@ class VggFeatures(nn.Module):
 class Vgg16(VggFeatures):
     def __init__(self, drop=0.2):
         super().__init__(drop)
-        self.lin3 = nn.Linear(4096, 3)
+        self.lin3 = nn.Linear(4096, 7)
 
     def forward(self, x):
         x = super().forward(x)

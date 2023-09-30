@@ -8,10 +8,13 @@ import torch.nn as nn
 import torchvision.transforms as transforms
 from imutils.video import FPS
 from PIL import Image
+from time import time
 
 sys.path.append("../")
 
-from models import custom, vgg
+from models import resnet
+
+t = []
 
 
 class EmotionDetector:
@@ -27,13 +30,13 @@ class EmotionDetector:
     """
 
     EMOTION_DICT = {
-        0: "neutral",
-        1: "happiness",
-        2: "surprise",
-        3: "sadness",
-        4: "anger",
-        5: "disguest",
-        6: "fear",
+        0: "Angry",
+        1: "Disgust",
+        2: "Fear",
+        3: "Happy",
+        4: "Sad",
+        5: "Surprise",
+        6: "Neutral",
     }
 
     def __init__(
@@ -52,9 +55,7 @@ class EmotionDetector:
         self.logger = self.setup_logger()
         self.face_model = self.load_face_model()
         self.device = self.setup_device(accelerator, backend_option)
-        self.emotion_model = self.load_trained_model(
-            f"./models/{model_name}"
-        )
+        self.emotion_model = self.load_trained_model(f"models/{model_name}")
 
     def setup_logger(self):
         logger = logging.getLogger(__name__)
@@ -100,35 +101,60 @@ class EmotionDetector:
         Returns:
             Face_Emotion_CNN: The loaded pre-trained model.
         """
-        model = custom.CustomModel()
-        model.load_state_dict(torch.load(model_path, map_location=self.device))
+        model = resnet.ResNet18()
+        model.load_state_dict(
+            torch.load(model_path, map_location=self.device)["model_state_dict"]
+        )
         model.to(self.device)
         model.eval()
         return model
 
     def recognize_emotion(self, face: np.ndarray) -> str:
+        start = time()
         try:
-            val_transform = transforms.Compose([transforms.ToTensor()])
+            transform = transforms.Compose(
+                [
+                    transforms.Grayscale(),
+                    transforms.TenCrop(40),
+                    transforms.Lambda(
+                        lambda crops: torch.stack(
+                            [transforms.ToTensor()(crop) for crop in crops]
+                        )
+                    ),
+                    transforms.Lambda(
+                        lambda tensors: torch.stack(
+                            [
+                                transforms.Normalize(mean=(0,), std=(255,))(t)
+                                for t in tensors
+                            ]
+                        )
+                    ),
+                ]
+            )
             resize_frame = cv2.resize(face, (48, 48))
             gray_frame = cv2.cvtColor(resize_frame, cv2.COLOR_BGR2GRAY)
-            X = Image.fromarray(gray_frame)
-            X = val_transform(X).unsqueeze(0).to(self.device)
+            inputs = Image.fromarray(gray_frame)
+            inputs = transform(inputs).unsqueeze(0).to(self.device)
 
             with torch.no_grad():
-                emotion_logits = self.emotion_model(X)
-                print(emotion_logits)
-                emotion_probabilities = torch.exp(emotion_logits) * 100
-                _, predicted_emotion_index = emotion_probabilities.topk(1, dim=1)
-                [
-                    print(
-                        f"{EmotionDetector.EMOTION_DICT[idx].upper().ljust(10)}{prob:.2f}%"
-                    )
-                    for idx, prob in enumerate(emotion_probabilities.tolist()[0])
-                ]
+                bs, ncrops, c, h, w = inputs.shape
+                inputs = inputs.view(-1, c, h, w)
+
+                # forward pass
+                outputs = self.emotion_model(inputs)
+
+                # combine results across the crops
+                outputs = outputs.view(bs, ncrops, -1)
+                outputs = torch.sum(outputs, dim=1) / ncrops
+
+                _, preds = torch.max(outputs.data, 1)
+                preds = preds.cpu().numpy()[0]
+
+                print(preds)
+
                 print("-" * 15)
-                predicted_emotion_label = EmotionDetector.EMOTION_DICT[
-                    int(predicted_emotion_index.item())
-                ]
+                predicted_emotion_label = EmotionDetector.EMOTION_DICT[preds]
+                t.append(time() - start)
 
             return predicted_emotion_label
         except cv2.error as e:
@@ -188,6 +214,7 @@ class EmotionDetector:
         fps.stop()
         self.logger.info("Elapsed time: %.2f", fps.elapsed())
         self.logger.info("Approx. FPS: %.2f", fps.fps())
+        self.logger.info("Average time: %.2f", np.mean(t))
 
         cap.release()
         cv2.destroyAllWindows()
