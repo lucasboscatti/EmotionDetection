@@ -4,12 +4,11 @@ import random
 
 import numpy as np
 import torch.nn.functional as F
-
 from models import *
 
 
 def cross_entropy(outputs, smooth_labels):
-    loss = torch.nn.KLDivLoss(reduction='batchmean')
+    loss = torch.nn.KLDivLoss(reduction="batchmean")
     return loss(F.log_softmax(outputs, dim=1), smooth_labels)
 
 
@@ -20,33 +19,34 @@ def smooth_one_hot(true_labels: torch.Tensor, classes: int, smoothing=0.0):
 
     """
     device = true_labels.device
-    true_labels = torch.nn.functional.one_hot(
-        true_labels, classes).detach().cpu()
+    true_labels = torch.nn.functional.one_hot(true_labels, classes).detach().cpu()
     assert 0 <= smoothing < 1
     confidence = 1.0 - smoothing
     label_shape = torch.Size((true_labels.size(0), classes))
     with torch.no_grad():
-        true_dist = torch.empty(
-            size=label_shape, device=true_labels.device)
+        true_dist = torch.empty(size=label_shape, device=true_labels.device)
         true_dist.fill_(smoothing / (classes - 1))
         _, index = torch.max(true_labels, 1)
 
-        true_dist.scatter_(1, torch.LongTensor(
-            index.unsqueeze(1)), confidence)
+        true_dist.scatter_(1, torch.LongTensor(index.unsqueeze(1)), confidence)
     return true_dist.to(device)
 
 
 class LabelSmoothingLoss(torch.nn.Module):
-    def __init__(self, smoothing: float = 0.1,
-                 reduction="mean", weight=None):
+    def __init__(self, smoothing: float = 0.1, reduction="mean", weight=None):
         super(LabelSmoothingLoss, self).__init__()
         self.smoothing = smoothing
         self.reduction = reduction
         self.weight = weight
 
     def reduce_loss(self, loss):
-        return loss.mean() if self.reduction == 'mean' else loss.sum() \
-            if self.reduction == 'sum' else loss
+        return (
+            loss.mean()
+            if self.reduction == "mean"
+            else loss.sum()
+            if self.reduction == "sum"
+            else loss
+        )
 
     def linear_combination(self, x, y):
         return self.smoothing * x + (1 - self.smoothing) * y
@@ -67,7 +67,7 @@ class LabelSmoothingLoss(torch.nn.Module):
 
 
 def mixup_data(x, y, alpha=0.2):
-    '''Returns mixed inputs, pairs of targets, and lambda'''
+    """Returns mixed inputs, pairs of targets, and lambda"""
     if alpha > 0:
         lam = np.random.beta(alpha, alpha)
     else:
@@ -85,25 +85,69 @@ def mixup_criterion(criterion, pred, y_a, y_b, lam):
     return lam * criterion(pred, y_a) + (1 - lam) * criterion(pred, y_b)
 
 
-def get_model(arch='ResNet18'):
-    if arch == 'ResNet18':
+def get_model(arch="ResNet18"):
+    # ResNet
+    if arch == "ResNet18_AE":
+        model = ResNet18_AE()
+    elif arch == "ResNet18":
         model = ResNet18()
-    elif arch == 'ResNet34':
+    elif arch == "ResNet34":
         model = ResNet34()
-    elif arch == 'SENet18':
+    elif arch == "ResNet50":
+        model = ResNet50()
+    elif arch == "ResNet101":
+        model = ResNet101()
+    elif arch == "ResNet152":
+        model = ResNet152()
+
+    # SENet
+    elif arch == "SENet18":
         model = SENet18()
-    elif arch == 'DenseNet':
+
+    # DenseNet
+    elif arch == "DenseNet":
         model = densenet_cifar()
-    elif arch == 'VGG19':
-        model = VGG('VGG19')
-    elif arch == 'PreActResNet18':
+    elif arch == "DenseNet121":
+        model = DenseNet121()
+    elif arch == "DenseNet161":
+        model = DenseNet161()
+    elif arch == "DenseNet169":
+        model = DenseNet169()
+    elif arch == "DenseNet201":
+        model = DenseNet201()
+
+    # VGG
+    elif arch == "VGG11":
+        model = VGG("VGG11")
+    elif arch == "VGG13":
+        model = VGG("VGG13")
+    elif arch == "VGG16":
+        model = VGG("VGG16")
+    elif arch == "VGG19":
+        model = VGG("VGG19")
+
+    # Pre-activation ResNet
+    elif arch == "PreActResNet18":
         model = PreActResNet18()
-    elif arch == 'PreActResNet34':
+    elif arch == "PreActResNet34":
         model = PreActResNet34()
-    elif arch == 'DLA':
+    elif arch == "PreActResNet50":
+        model = PreActResNet50()
+    elif arch == "PreActResNet101":
+        model = PreActResNet101()
+    elif arch == "PreActResNet152":
+        model = PreActResNet152()
+
+    # DLA
+    elif arch == "DLA":
         model = DLA()
-    elif arch == 'DPN':
+
+    # DPN
+    elif arch == "DPN26":
         model = DPN26()
+    elif arch == "DPN92":
+        model = DPN92()
+
     return model
 
 
@@ -117,15 +161,15 @@ def random_seed(seed=0):
     torch.backends.cudnn.benchmark = False
 
 
-class Logger():
-    def __init__(self, logfile='output.log'):
+class Logger:
+    def __init__(self, logfile="output.log"):
         self.logfile = logfile
         self.logger = logging.getLogger(__name__)
         logging.basicConfig(
-            format='[%(asctime)s] - %(message)s',
-            datefmt='%Y/%m/%d %H:%M:%S',
+            format="[%(asctime)s] - %(message)s",
+            datefmt="%Y/%m/%d %H:%M:%S",
             level=logging.INFO,
-            filename=self.logfile
+            filename=self.logfile,
         )
 
     def info(self, msg, *args):
@@ -139,9 +183,9 @@ class Logger():
 
 
 def save_checkpoint(state, epoch, is_best, save_path, save_freq=10):
-    filename = os.path.join(save_path, 'checkpoint_' + str(epoch) + '.tar')
+    filename = os.path.join(save_path, "checkpoint_" + str(epoch) + ".tar")
     if epoch % save_freq == 0:
         torch.save(state, filename)
     if is_best:
-        best_filename = os.path.join(save_path, 'best_checkpoint.tar')
+        best_filename = os.path.join(save_path, "best_checkpoint.tar")
         torch.save(state, best_filename)

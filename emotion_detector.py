@@ -1,5 +1,6 @@
 import logging
 import sys
+from time import time
 
 import cv2
 import numpy as np
@@ -8,11 +9,10 @@ import torch.nn as nn
 import torchvision.transforms as transforms
 from imutils.video import FPS
 from PIL import Image
-from time import time
 
 sys.path.append("../")
 
-from models import resnet
+from train.models import resnet
 
 t = []
 
@@ -69,8 +69,8 @@ class EmotionDetector:
 
     def load_face_model(self):
         return cv2.dnn.readNetFromCaffe(
-            "models/res10_300x300_ssd_iter_140000.prototxt",
-            "models/res10_300x300_ssd_iter_140000.caffemodel",
+            "train/models/face_detector/res10_300x300_ssd_iter_140000.prototxt",
+            "train/models/face_detector/res10_300x300_ssd_iter_140000.caffemodel",
         )
 
     def setup_device(self, accelerator, backend_option):

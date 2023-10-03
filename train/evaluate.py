@@ -3,20 +3,20 @@ import warnings
 
 import torch
 import torch.nn as nn
-from sklearn.metrics import precision_score, f1_score, recall_score, confusion_matrix
+from sklearn.metrics import confusion_matrix, f1_score, precision_score, recall_score
+from utils import get_model
 
 from train.dataset import get_dataloaders
-from utils import get_model
 
 warnings.filterwarnings("ignore")
 
-parser = argparse.ArgumentParser(description='USTC Computer Vision Final Project')
-parser.add_argument('--batch_size', default=128, type=int)
-parser.add_argument('--seed', default=0, type=int)
-parser.add_argument('--data_path', default='datasets/fer2013/fer2013.csv', type=str)
-parser.add_argument('--checkpoint', default='', type=str)
-parser.add_argument('--arch', default="ResNet18", type=str)
-parser.add_argument('--Ncrop', default=True, type=eval)
+parser = argparse.ArgumentParser(description="USTC Computer Vision Final Project")
+parser.add_argument("--batch_size", default=128, type=int)
+parser.add_argument("--seed", default=0, type=int)
+parser.add_argument("--data_path", default="datasets/fer2013/fer2013.csv", type=str)
+parser.add_argument("--checkpoint", default="", type=str)
+parser.add_argument("--arch", default="ResNet18", type=str)
+parser.add_argument("--Ncrop", default=True, type=eval)
 
 
 def correct_count(output, target, topk=(1,)):
@@ -85,23 +85,23 @@ def evaluate(net, dataloader, loss_fn, Ncrop, device):
     print("Top 1 Accuracy: %2.6f %%" % acc1)
     print("Top 2 Accuracy: %2.6f %%" % acc2)
     print("Loss: %2.6f" % loss)
-    print("Precision: %2.6f" % precision_score(y_gt, y_pred, average='micro'))
-    print("Recall: %2.6f" % recall_score(y_gt, y_pred, average='micro'))
-    print("F1 Score: %2.6f" % f1_score(y_gt, y_pred, average='micro'))
-    print("Confusion Matrix:\n", confusion_matrix(y_gt, y_pred), '\n')
+    print("Precision: %2.6f" % precision_score(y_gt, y_pred, average="micro"))
+    print("Recall: %2.6f" % recall_score(y_gt, y_pred, average="micro"))
+    print("F1 Score: %2.6f" % f1_score(y_gt, y_pred, average="micro"))
+    print("Confusion Matrix:\n", confusion_matrix(y_gt, y_pred), "\n")
 
 
 def main():
     args = parser.parse_args()
 
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     loss_fn = nn.CrossEntropyLoss()
 
     model = get_model(args.arch).to(device)
     print(model)
     checkpoint = torch.load(args.checkpoint)
-    model.load_state_dict(checkpoint['model_state_dict'])
+    model.load_state_dict(checkpoint["model_state_dict"])
 
     train_loader, val_loader, test_loader = get_dataloaders(augment=False)
     with torch.no_grad():
