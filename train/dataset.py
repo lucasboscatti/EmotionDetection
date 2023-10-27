@@ -49,7 +49,30 @@ def load_data(path="datasets/fer2013/fer2013.csv"):
         6: "Neutral",
     }
 
-    return fer2013, emotion_mapping
+    new_emotion_mapping = {
+        0: 0, # BAD
+        1: 0,
+        2: 0,
+        3: 1, # GOOD
+        4: 0,
+        5: 1,
+        6: 2  # NEUTRAL
+    }
+
+    return fer2013, new_emotion_mapping
+
+
+def new_labels(emotions):
+    mapping = {
+        0: 0, # BAD
+        1: 0,
+        2: 0,
+        3: 1, # GOOD
+        4: 0,
+        5: 1,
+        6: 2  # NEUTRAL
+    }
+    return [mapping[num] for num in emotions]
 
 
 def prepare_data(data):
@@ -59,6 +82,8 @@ def prepare_data(data):
 
     image_array = np.zeros(shape=(len(data), 48, 48))
     image_label = np.array(list(map(int, data["emotion"])))
+    image_label = new_labels(image_label)
+
 
     for i, row in enumerate(data.index):
         image = np.fromstring(data.loc[row, "pixels"], dtype=int, sep=" ")

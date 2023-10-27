@@ -229,10 +229,10 @@ def train(model, train_loader, loss_fn, optimizer, epoch, device, scaler, writer
                 if args.mixup:
                     # mixup + label smooth
                     soft_labels_a = smooth_one_hot(
-                        labels_a, classes=7, smoothing=args.label_smooth_value
+                        labels_a, classes=3, smoothing=args.label_smooth_value
                     )
                     soft_labels_b = smooth_one_hot(
-                        labels_b, classes=7, smoothing=args.label_smooth_value
+                        labels_b, classes=3, smoothing=args.label_smooth_value
                     )
                     loss = mixup_criterion(
                         loss_fn, outputs, soft_labels_a, soft_labels_b, lam
@@ -240,7 +240,7 @@ def train(model, train_loader, loss_fn, optimizer, epoch, device, scaler, writer
                 else:
                     # label smoorth
                     soft_labels = smooth_one_hot(
-                        labels, classes=7, smoothing=args.label_smooth_value
+                        labels, classes=3, smoothing=args.label_smooth_value
                     )
                     loss = loss_fn(outputs, soft_labels)
             else:

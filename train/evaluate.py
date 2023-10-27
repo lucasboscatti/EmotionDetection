@@ -6,12 +6,12 @@ import torch.nn as nn
 from sklearn.metrics import confusion_matrix, f1_score, precision_score, recall_score
 from utils import get_model
 
-from train.dataset import get_dataloaders
+from dataset import get_dataloaders
 
 warnings.filterwarnings("ignore")
 
-parser = argparse.ArgumentParser(description="USTC Computer Vision Final Project")
-parser.add_argument("--batch_size", default=128, type=int)
+parser = argparse.ArgumentParser(description="Final Project FER Nero")
+parser.add_argument("--batch_size", default=64, type=int)
 parser.add_argument("--seed", default=0, type=int)
 parser.add_argument("--data_path", default="datasets/fer2013/fer2013.csv", type=str)
 parser.add_argument("--checkpoint", default="", type=str)
@@ -100,7 +100,7 @@ def main():
 
     model = get_model(args.arch).to(device)
     print(model)
-    checkpoint = torch.load(args.checkpoint)
+    checkpoint = torch.load(args.checkpoint, map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
 
     train_loader, val_loader, test_loader = get_dataloaders(augment=False)
