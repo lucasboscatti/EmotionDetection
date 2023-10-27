@@ -14,8 +14,6 @@ sys.path.append("../")
 
 from train.models import resnet
 
-t = []
-
 
 class EmotionDetector:
     """
@@ -29,21 +27,13 @@ class EmotionDetector:
         EMOTION_DICT (dict): A dictionary mapping emotion labels to their corresponding names.
     """
 
-    EMOTION_DICT = {
-        0: "Angry",
-        1: "Disgust",
-        2: "Fear",
-        3: "Happy",
-        4: "Sad",
-        5: "Surprise",
-        6: "Neutral",
-    }
+    EMOTION_DICT = {0: "BAD", 1: "GOOD", 2: "NEUTRAL"}
 
     def __init__(
         self,
         accelerator: str = "cuda" if torch.cuda.is_available() else "cpu",
         backend_option: int = 0 if torch.cuda.is_available() else 1,
-        model_name: str = "vgg.pt",
+        model_name: str = "checkpoint_190.tar",
     ):
         """
         Initializes the Detector object.
@@ -53,9 +43,9 @@ class EmotionDetector:
             backend_option (int, optional): Backend option for OpenCV's DNN module. Default is 0 if CUDA is available, otherwise 1.
         """
         self.logger = self.setup_logger()
-        self.face_model = self.load_face_model()
-        self.device = self.setup_device(accelerator, backend_option)
-        self.emotion_model = self.load_trained_model(f"models/{model_name}")
+        self.face_model = self.load_face_model(backend_option)
+        self.device = self.setup_device(accelerator)
+        self.emotion_model = self.load_trained_model(f"train/models/{model_name}")
 
     def setup_logger(self):
         logger = logging.getLogger(__name__)
@@ -67,22 +57,22 @@ class EmotionDetector:
         logger.addHandler(console_handler)
         return logger
 
-    def load_face_model(self):
-        return cv2.dnn.readNetFromCaffe(
+    def load_face_model(self, backend_option: int = 1):
+        face_model = cv2.dnn.readNetFromCaffe(
             "train/models/face_detector/res10_300x300_ssd_iter_140000.prototxt",
             "train/models/face_detector/res10_300x300_ssd_iter_140000.caffemodel",
         )
-
-    def setup_device(self, accelerator, backend_option):
         backend_target_pairs = [
             [cv2.dnn.DNN_BACKEND_OPENCV, cv2.dnn.DNN_TARGET_CPU],
             [cv2.dnn.DNN_BACKEND_CUDA, cv2.dnn.DNN_TARGET_CUDA],
             [cv2.dnn.DNN_BACKEND_CUDA, cv2.dnn.DNN_TARGET_CUDA_FP16],
         ]
 
-        self.face_model.setPreferableBackend(backend_target_pairs[backend_option][0])
-        self.face_model.setPreferableTarget(backend_target_pairs[backend_option][1])
+        face_model.setPreferableBackend(backend_target_pairs[backend_option][0])
+        face_model.setPreferableTarget(backend_target_pairs[backend_option][1])
+        return face_model
 
+    def setup_device(self, accelerator):
         if accelerator == "cuda":
             if torch.cuda.is_available():
                 return torch.device("cuda")
@@ -110,7 +100,6 @@ class EmotionDetector:
         return model
 
     def recognize_emotion(self, face: np.ndarray) -> str:
-        start = time()
         try:
             transform = transforms.Compose(
                 [
@@ -150,15 +139,11 @@ class EmotionDetector:
                 _, preds = torch.max(outputs.data, 1)
                 preds = preds.cpu().numpy()[0]
 
-                print(preds)
-
-                print("-" * 15)
                 predicted_emotion_label = EmotionDetector.EMOTION_DICT[preds]
-                t.append(time() - start)
 
             return predicted_emotion_label
         except cv2.error as e:
-            self.logger.error("No emotion detected")
+            self.logger.error("No emotion detected: ", e)
 
     def process_image(self, img_name: str) -> None:
         """
@@ -189,6 +174,7 @@ class EmotionDetector:
             video_path = "v4l2src device=/dev/video2 ! video/x-raw, width=640, height=480 ! videoconvert ! video/x-raw,format=BGR ! appsink"
 
         self.logger.info("Video path: %s", video_path)
+
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             self.logger.error("Error opening video stream or file")
@@ -214,7 +200,6 @@ class EmotionDetector:
         fps.stop()
         self.logger.info("Elapsed time: %.2f", fps.elapsed())
         self.logger.info("Approx. FPS: %.2f", fps.fps())
-        self.logger.info("Average time: %.2f", np.mean(t))
 
         cap.release()
         cv2.destroyAllWindows()
