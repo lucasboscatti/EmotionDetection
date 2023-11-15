@@ -40,9 +40,11 @@ class CustomDataset(Dataset):
 
 
 def load_data(path="/home/nero-ia/Documents/Boscatti/EmotionDetection/train/datasets/affectnet/csv/"):
-    df_train = pd.read_csv(path+"train.csv", delimiter=',')
-    df_valid = pd.read_csv(path+"validate.csv", delimiter=',')
-    df_test = pd.read_csv(path+"test.csv", delimiter=',')
+    df = pd.read_csv(path, delimiter=',')
+    df = df[['image_id','labels_ex', 'labels_aro', 'labels_val', 'facial_landmarks']]
+    train, valid, test = \
+              np.split(df.sample(frac=1, random_state=42),
+                       [int(.7*len(df)), int(.85*len(df))])
     affect_net_labels = {
         0: 'Neutral', # 2
         1: 'Happy',   # 1
@@ -54,7 +56,7 @@ def load_data(path="/home/nero-ia/Documents/Boscatti/EmotionDetection/train/data
         7: 'Contempt' # 0
     }
 
-    return df_train, df_valid, df_test
+    return train, valid, test
 
 
 def new_labels(emotions):
@@ -76,16 +78,14 @@ def prepare_data(data):
     input: data frame with labels und pixel data
     output: image and label array"""
 
-    image_array = np.zeros(shape=(len(data), 48, 48))
+    image_array = np.zeros(shape=(len(data), 224, 224))
     image_label = np.array(list(map(int, data["labels_ex"])))
     image_label = new_labels(image_label)
 
 
     for i, row in enumerate(data.index):
-        # image_pixels = np.array(Image.open(data.loc[0, "image_id"]).convert('L'))
-        # image = np.reshape(image, (48, 48))
         img = cv2.imread(data.loc[0, "image_id"],cv2.IMREAD_GRAYSCALE)
-        img = cv2.resize(img,(48,48))
+        img = cv2.resize(img,(224,224))
         image_array[i] = img
 
     return image_array, image_label
@@ -120,9 +120,9 @@ def get_dataloaders(path="/home/nero-ia/Documents/Boscatti/EmotionDetection/trai
     xtest, ytest = undersampler.fit_resample(xtest, ytest)
 
     # reshaping X back to the first dims
-    xtrain = xtrain.reshape(-1,48,48)
-    xval = xval.reshape(-1,48,48)
-    xtest = xtest.reshape(-1,48,48)
+    xtrain = xtrain.reshape(-1,224,224)
+    xval = xval.reshape(-1,224,224)
+    xtest = xtest.reshape(-1,224,224)
 
     mu, st = 0, 255
 
@@ -146,7 +146,7 @@ def get_dataloaders(path="/home/nero-ia/Documents/Boscatti/EmotionDetection/trai
         train_transform = transforms.Compose(
             [
                 transforms.Grayscale(),
-                transforms.RandomResizedCrop(48, scale=(0.8, 1.2)),
+                transforms.RandomResizedCrop(224, scale=(0.8, 1.2)),
                 transforms.RandomApply(
                     [
                         transforms.ColorJitter(
