@@ -8,3 +8,5 @@ tf_log
 best_checkpoint.tar
 resnet18_3_classes_300/
 *.tar
+affectnet/
+results/

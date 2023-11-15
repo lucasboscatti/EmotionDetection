@@ -12,13 +12,13 @@ from keras.optimizers import Adam
 from keras.utils.np_utils import to_categorical
 from sklearn.utils import class_weight
 
-from train.mobilenet.custom_data_generator import CustomDataGenerator
+from custom_data_generator import CustomDataGenerator
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 
 # OPTIONS #
-IMAGE_SIZE = 224
+IMAGE_SIZE = 96
 CLASSIFY = 0
 REGRESS = 1
 
@@ -61,7 +61,7 @@ def mobilenet_v2_model(t_type, dropout=0.5):
     x = Dense(1024, activation='relu')(x)
     x = Dropout(dropout)(x)
     if t_type == CLASSIFY:
-        predictions = Dense(8, activation='softmax')(x)
+        predictions = Dense(3, activation='softmax')(x)
         model = Model(inputs=base_model.input, outputs=predictions)
         model.compile(loss='categorical_crossentropy', optimizer=Adam(lr=0.00001), metrics=['accuracy'])
     else:
@@ -147,9 +147,9 @@ if __name__ == '__main__':
     ALPHA                0.5419
     AUCPR                0.6529
     AUC                  0.9127
-            
+
     Confusion Matrix:
-    
+
          N   H   Sa  Su  Af  D   An  C
     N  [280  11  50  40  16  15  41  47]
     H  [ 19 371   6  24   3  11   3  63]
@@ -158,10 +158,10 @@ if __name__ == '__main__':
     Af [ 22   8  36  79 312  24  19   0]
     D  [ 28  17  47  14  15 269  91  19]
     An [ 65   4  28  21  25  48 293  16]
-    C  [ 82  66  16  14   4  25  28 265]    
+    C  [ 82  66  16  14   4  25  28 265]
 
     F-score:
-    
+
                   precision    recall  f1-score   support
                0       0.46      0.56      0.51       500
                1       0.72      0.74      0.73       500
@@ -174,9 +174,9 @@ if __name__ == '__main__':
         accuracy                           0.60      4000
        macro avg       0.60      0.60      0.60      4000
     weighted avg       0.60      0.60      0.60      4000
-    
-    
-    
+
+
+
                       REGRESSION METRICS
     ------------------------------------------------------
                          VALENCE              AROUSAL
@@ -185,3 +185,6 @@ if __name__ == '__main__':
     SAGR                 0.7562               0.7458
     CCC                  0.5822               0.463
     '''
+    if __name__ == '__main__':
+        model = mobilenet_v2_model(CLASSIFY)
+        train(CLASSIFY, model, "/home/nero-ia/Documents/Boscatti/EmotionDetection/train/results", 50, 64)

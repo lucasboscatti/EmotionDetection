@@ -29,7 +29,7 @@ warnings.filterwarnings("ignore")
 parser = argparse.ArgumentParser(description="USTC Computer Vision Final Project")
 parser.add_argument("--arch", default="ResNet18", type=str)
 parser.add_argument("--epochs", default=300, type=int)
-parser.add_argument("--batch_size", default=128, type=int)
+parser.add_argument("--batch_size", default=64, type=int)
 parser.add_argument("--scheduler", default="reduce", type=str, help="[reduce, cos]")
 parser.add_argument("--lr", default=0.1, type=float)
 parser.add_argument("--momentum", default=0.9, type=float)
@@ -39,7 +39,7 @@ parser.add_argument("--label_smooth_value", default=0.1, type=float)
 parser.add_argument("--mixup", default=True, type=eval)
 parser.add_argument("--mixup_alpha", default=1.0, type=float)
 parser.add_argument("--Ncrop", default=True, type=eval)
-parser.add_argument("--data_path", default="datasets/fer2013/fer2013.csv", type=str)
+parser.add_argument("--data_path", type=str)
 parser.add_argument("--results", default="./results", type=str)
 parser.add_argument("--save_freq", default=10, type=int)
 parser.add_argument("--resume", default=0, type=int)
@@ -99,7 +99,7 @@ def main():
     logger.info("Load dataset ...")
 
     train_loader, val_loader, test_loader = get_dataloaders(
-        path=args.data_path, bs=args.batch_size, augment=True
+        bs=args.batch_size, augment=True
     )
 
     logger.info("Start load model %s ...", args.arch)

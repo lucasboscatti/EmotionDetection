@@ -15,16 +15,14 @@ def process_labels(file_path):
         for row in r:
             if 'sub' in row[0]:
                 continue
-            valence = float(row[-2])
-            arousal = float(row[-1])
             emotion = int(row[-3])
             path = 'data/' + row[0]
-            if emotion > 7 and (arousal == -2 or valence == -2):
+            if emotion > 7:
                 continue
             if not os.path.exists(path):
                 print('error: no image')
                 continue
-            labels.append((emotion, valence, arousal))
+            labels.append((emotion))
             paths.append(path)
             count += 1
             print('Loaded:', count, end='\r')
