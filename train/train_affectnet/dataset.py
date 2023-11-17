@@ -1,14 +1,14 @@
 """
 Adapted from https://github.com/usef-kh/fer/tree/master/data
 """
+import cv2
 import numpy as np
 import pandas as pd
 import torch
 import torchvision.transforms as transforms
+from imblearn.under_sampling import RandomUnderSampler
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset
-from imblearn.under_sampling import RandomUnderSampler
-import cv2
 
 
 class CustomDataset(Dataset):
@@ -39,37 +39,30 @@ class CustomDataset(Dataset):
         return sample
 
 
-def load_data(path="/home/nero-ia/Documents/Boscatti/EmotionDetection/train/datasets/affectnet/csv/"):
-    df = pd.read_csv(path, delimiter=',')
-    df = df[['image_id','labels_ex', 'labels_aro', 'labels_val', 'facial_landmarks']]
-    train, valid, test = \
-              np.split(df.sample(frac=1, random_state=42),
-                       [int(.7*len(df)), int(.85*len(df))])
+def load_data(
+    path="/home/nero-ia/Documents/Boscatti/EmotionDetection/train/datasets/affectnet/csv/",
+):
+    df = pd.read_csv(path, delimiter=",")
+    df = df[["image_id", "labels_ex", "labels_aro", "labels_val", "facial_landmarks"]]
+    train, valid, test = np.split(
+        df.sample(frac=1, random_state=42), [int(0.7 * len(df)), int(0.85 * len(df))]
+    )
     affect_net_labels = {
-        0: 'Neutral', # 2
-        1: 'Happy',   # 1
-        2: 'Sad',     # 0
-        3: 'Surprise',# 1
-        4: 'Fear',    # 0
-        5: 'Disgust', # 0
-        6: 'Anger',   # 0
-        7: 'Contempt' # 0
+        0: "Neutral",  # 2
+        1: "Happy",  # 1
+        2: "Sad",  # 0
+        3: "Surprise",  # 1
+        4: "Fear",  # 0
+        5: "Disgust",  # 0
+        6: "Anger",  # 0
+        7: "Contempt",  # 0
     }
 
     return train, valid, test
 
 
 def new_labels(emotions):
-    mapping = {
-        0: 2, # NEUTRAL
-        1: 1,
-        2: 0,
-        3: 1, # GOOD
-        4: 0,
-        5: 0,
-        6: 0,  # BAD
-        7: 0
-    }
+    mapping = {0: 2, 1: 1, 2: 0, 3: 1, 4: 0, 5: 0, 6: 0, 7: 0}  # NEUTRAL  # GOOD  # BAD
     return [mapping[num] for num in emotions]
 
 
@@ -82,16 +75,19 @@ def prepare_data(data):
     image_label = np.array(list(map(int, data["labels_ex"])))
     image_label = new_labels(image_label)
 
-
     for i, row in enumerate(data.index):
-        img = cv2.imread(data.loc[0, "image_id"],cv2.IMREAD_GRAYSCALE)
-        img = cv2.resize(img,(224,224))
+        img = cv2.imread(data.loc[0, "image_id"], cv2.IMREAD_GRAYSCALE)
+        img = cv2.resize(img, (224, 224))
         image_array[i] = img
 
     return image_array, image_label
 
 
-def get_dataloaders(path="/home/nero-ia/Documents/Boscatti/EmotionDetection/train/datasets/affectnet/csv/", bs=64, augment=True):
+def get_dataloaders(
+    path="/home/nero-ia/Documents/Boscatti/EmotionDetection/train/datasets/affectnet/csv/",
+    bs=64,
+    augment=True,
+):
     """Prepare train, val, & test dataloaders
     Augment training data using:
         - cropping
@@ -108,11 +104,11 @@ def get_dataloaders(path="/home/nero-ia/Documents/Boscatti/EmotionDetection/trai
     xtest, ytest = prepare_data(df_test)
 
     # Initialize RandomUnderSampler
-    undersampler = RandomUnderSampler(sampling_strategy='auto', random_state=42)
+    undersampler = RandomUnderSampler(sampling_strategy="auto", random_state=42)
 
-    xtrain = xtrain.reshape(xtrain.shape[0],-1)
-    xval = xval.reshape(xval.shape[0],-1)
-    xtest = xtest.reshape(xtest.shape[0],-1)
+    xtrain = xtrain.reshape(xtrain.shape[0], -1)
+    xval = xval.reshape(xval.shape[0], -1)
+    xtest = xtest.reshape(xtest.shape[0], -1)
 
     # Fit and transform the data
     xtrain, ytrain = undersampler.fit_resample(xtrain, ytrain)
@@ -120,9 +116,9 @@ def get_dataloaders(path="/home/nero-ia/Documents/Boscatti/EmotionDetection/trai
     xtest, ytest = undersampler.fit_resample(xtest, ytest)
 
     # reshaping X back to the first dims
-    xtrain = xtrain.reshape(-1,224,224)
-    xval = xval.reshape(-1,224,224)
-    xtest = xtest.reshape(-1,224,224)
+    xtrain = xtrain.reshape(-1, 224, 224)
+    xval = xval.reshape(-1, 224, 224)
+    xtest = xtest.reshape(-1, 224, 224)
 
     mu, st = 0, 255
 

@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torchvision.transforms as transforms
+from imblearn.under_sampling import RandomUnderSampler
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset
 
@@ -50,28 +51,20 @@ def load_data(path="datasets/fer2013/fer2013.csv"):
     }
 
     new_emotion_mapping = {
-        0: 0, # BAD
+        0: 0,  # BAD
         1: 0,
         2: 0,
-        3: 1, # GOOD
+        3: 1,  # GOOD
         4: 0,
         5: 1,
-        6: 2  # NEUTRAL
+        6: 2,  # NEUTRAL
     }
 
     return fer2013, new_emotion_mapping
 
 
 def new_labels(emotions):
-    mapping = {
-        0: 0, # BAD
-        1: 0,
-        2: 0,
-        3: 1, # GOOD
-        4: 0,
-        5: 1,
-        6: 2  # NEUTRAL
-    }
+    mapping = {0: 0, 1: 0, 2: 0, 3: 1, 4: 0, 5: 1, 6: 2}  # BAD  # GOOD  # NEUTRAL
     return [mapping[num] for num in emotions]
 
 
@@ -83,7 +76,6 @@ def prepare_data(data):
     image_array = np.zeros(shape=(len(data), 48, 48))
     image_label = np.array(list(map(int, data["emotion"])))
     image_label = new_labels(image_label)
-
 
     for i, row in enumerate(data.index):
         image = np.fromstring(data.loc[row, "pixels"], dtype=int, sep=" ")
@@ -108,6 +100,22 @@ def get_dataloaders(path="datasets/fer2013/fer2013.csv", bs=64, augment=True):
     xtrain, ytrain = prepare_data(fer2013[fer2013["Usage"] == "Training"])
     xval, yval = prepare_data(fer2013[fer2013["Usage"] == "PrivateTest"])
     xtest, ytest = prepare_data(fer2013[fer2013["Usage"] == "PublicTest"])
+
+    undersampler = RandomUnderSampler(sampling_strategy="auto", random_state=42)
+
+    xtrain = xtrain.reshape(xtrain.shape[0], -1)
+    xval = xval.reshape(xval.shape[0], -1)
+    xtest = xtest.reshape(xtest.shape[0], -1)
+
+    # Fit and transform the data
+    xtrain, ytrain = undersampler.fit_resample(xtrain, ytrain)
+    xval, yval = undersampler.fit_resample(xval, yval)
+    xtest, ytest = undersampler.fit_resample(xtest, ytest)
+
+    # reshaping X back to the first dims
+    xtrain = xtrain.reshape(-1, 48, 48)
+    xval = xval.reshape(-1, 48, 48)
+    xtest = xtest.reshape(-1, 48, 48)
 
     mu, st = 0, 255
 
