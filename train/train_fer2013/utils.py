@@ -4,6 +4,11 @@ import random
 
 import numpy as np
 import torch.nn.functional as F
+
+import sys
+
+sys.path.append("..")
+
 from models import *
 
 

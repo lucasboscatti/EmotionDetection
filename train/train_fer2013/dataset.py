@@ -38,7 +38,7 @@ class CustomDataset(Dataset):
         return sample
 
 
-def load_data(path="datasets/fer2013/fer2013.csv"):
+def load_data(path="./datasets/fer2013/fer2013.csv"):
     fer2013 = pd.read_csv(path)
     emotion_mapping = {
         0: "Angry",
