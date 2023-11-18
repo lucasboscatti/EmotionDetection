@@ -1,6 +1,5 @@
 import logging
 import sys
-from time import time
 
 import cv2
 import numpy as np
@@ -9,10 +8,13 @@ import torch.nn as nn
 import torchvision.transforms as transforms
 from imutils.video import FPS
 from PIL import Image
+import onnxruntime
 
 sys.path.append("../")
 
-from train.models import resnet
+
+def to_numpy(tensor):
+    return tensor.detach().cpu().numpy() if tensor.requires_grad else tensor.cpu().numpy()
 
 
 class EmotionDetector:
@@ -33,7 +35,7 @@ class EmotionDetector:
         self,
         accelerator: str = "cuda" if torch.cuda.is_available() else "cpu",
         backend_option: int = 0 if torch.cuda.is_available() else 1,
-        model_name: str = "checkpoint_190.tar",
+        model_name: str = "resnet18.onnx",
     ):
         """
         Initializes the Detector object.
@@ -81,7 +83,7 @@ class EmotionDetector:
 
         return torch.device("cpu")
 
-    def load_trained_model(self, model_path: str) -> nn.Module:
+    def load_trained_model(self, model_name: str) -> nn.Module:
         """
         Loads a pre-trained emotion recognition model from the specified path.
 
@@ -91,13 +93,8 @@ class EmotionDetector:
         Returns:
             Face_Emotion_CNN: The loaded pre-trained model.
         """
-        model = resnet.ResNet18()
-        model.load_state_dict(
-            torch.load(model_path, map_location=self.device)["model_state_dict"]
-        )
-        model.to(self.device)
-        model.eval()
-        return model
+
+        return onnxruntime.InferenceSession(model_name, providers=["CPUExecutionProvider"])
 
     def recognize_emotion(self, face: np.ndarray) -> str:
         try:
@@ -121,16 +118,16 @@ class EmotionDetector:
                 ]
             )
             resize_frame = cv2.resize(face, (48, 48))
-            gray_frame = cv2.cvtColor(resize_frame, cv2.COLOR_BGR2GRAY)
-            inputs = Image.fromarray(gray_frame)
+            inputs = Image.fromarray(resize_frame)
             inputs = transform(inputs).unsqueeze(0).to(self.device)
 
             with torch.no_grad():
                 bs, ncrops, c, h, w = inputs.shape
                 inputs = inputs.view(-1, c, h, w)
-
-                # forward pass
-                outputs = self.emotion_model(inputs)
+                
+                inputs = {self.emotion_model.get_inputs()[0].name: to_numpy(inputs)}
+                outputs = self.emotion_model.run([self.emotion_model.get_outputs()[0].name], inputs)
+                outputs = torch.from_numpy(outputs[0])
 
                 # combine results across the crops
                 outputs = outputs.view(bs, ncrops, -1)

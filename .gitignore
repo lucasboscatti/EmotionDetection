@@ -10,3 +10,6 @@ resnet18_3_classes_300/
 *.tar
 affectnet/
 results/
+events.out.tfevents.*
+*.log
+.venv
