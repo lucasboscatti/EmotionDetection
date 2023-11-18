@@ -6,7 +6,7 @@ __pycache__/
 tf_log
 *.pth
 best_checkpoint.tar
-resnet18_3_classes_300/
+resnet18_3_classes_300*/
 *.tar
 affectnet/
 results/
