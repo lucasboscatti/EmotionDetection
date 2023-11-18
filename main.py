@@ -5,7 +5,7 @@ from emotion_detector import EmotionDetector
 parser = argparse.ArgumentParser(description="Lucas Boscatti's Final Project Nero")
 parser.add_argument("--arch", default="ResNet18", type=str)
 parser.add_argument("--accelerator", default="cuda", type=str, help="[cuda, cpu]")
-parser.add_argument("--model_name", default="best_checkpoint.tar", type=str)
+parser.add_argument("--model_name", default="resnet18.onnx", type=str)
 parser.add_argument("--backend_option", default=1, type=int, help="""Choose one of the backend-target pair to run this demo:
                         1: (default) OpenCV implementation + CPU,
                         2: CUDA + GPU (CUDA),
