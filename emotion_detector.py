@@ -36,7 +36,7 @@ class EmotionDetector:
         accelerator: str = "cuda" if torch.cuda.is_available() else "cpu",
         backend_option: int = 0 if torch.cuda.is_available() else 1,
         model_name: str = "resnet18.onnx",
-        providers=None,
+        providers=1,
     ):
         """
         Initializes the Detector object.
@@ -84,7 +84,7 @@ class EmotionDetector:
 
         return torch.device("cpu")
 
-    def load_trained_model(self, model_name: str, providers=None) -> onnxruntime.InferenceSession:
+    def load_trained_model(self, model_name: str, providers) -> onnxruntime.InferenceSession:
         """
         Loads a pre-trained emotion recognition model from the specified path.
 
@@ -95,10 +95,13 @@ class EmotionDetector:
         Returns:
             Face_Emotion_CNN: The loaded pre-trained model.
         """
+        providers_options = {
+            1: ["CPUExecutionProvider"],
+            2: ["CUDAExecutionProvider"],
+            3: ["TensorrtExecutionProvider"],
+        }
 
-        if providers is None:
-            providers = ["CPUExecutionProvider"]
-        return onnxruntime.InferenceSession(model_name, providers=providers)
+        return onnxruntime.InferenceSession(model_name, providers=providers_options[providers])
 
     def recognize_emotion(self, face: np.ndarray) -> str:
         try:
