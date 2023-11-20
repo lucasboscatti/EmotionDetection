@@ -11,6 +11,11 @@ parser.add_argument("--backend_option", default=1, type=int, help="""Choose one 
                         2: CUDA + GPU (CUDA),
                         3: CUDA + GPU (CUDA FP16)""",
 )
+parser.add_argument("--providers", default=None, type=str, help="""Choose one of the backend-target pair to run this demo:
+                        1: (default) CPUExecutionProvider,
+                        2: CUDAExecutionProvider (CUDA),
+                        3: TensorrtExecutionProvider (CUDA FP16)""",
+)
 parser.add_argument("--video", default=0, type=str, help=["0", "realsense", "path/to/video"])
 parser.add_argument("--display_window", default=True, type=bool, help="True or False")
 
@@ -22,6 +27,7 @@ if __name__ == "__main__":
         accelerator=args.accelerator,
         backend_option=args.backend_option,
         model_name=args.model_name,
+        providers=args.providers,
     )
 
     detector.process_video(args.video, display_window=args.display_window)
