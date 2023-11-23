@@ -19,6 +19,7 @@ parser.add_argument("--providers", default=None, type=int, help="""Choose one of
 parser.add_argument("--file", default=0, type=str, help=["0", "realsense", "path/to/video or image"])
 parser.add_argument("--display_window", default=True, type=bool, help="True or False")
 parser.add_argument("--option", default="video", type=str, help=["video", "image"])
+parser.add_argument("--num_faces", default=None, type=int, help="Number of faces to detect")
 
 
 if __name__ == "__main__":
@@ -29,6 +30,7 @@ if __name__ == "__main__":
         backend_option=args.backend_option,
         model_name=args.model_name,
         providers=args.providers,
+        num_faces=args.num_faces
     )
 
     if args.option == "image":
