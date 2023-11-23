@@ -49,6 +49,10 @@ class EmotionDetector:
         self.face_model = self.load_face_model(backend_option)
         self.device = self.setup_device(accelerator)
         self.emotion_model = self.load_trained_model(f"train/models/{model_name}", providers)
+        self.bbox_predictions = {
+            0: [],
+            1: [],
+        }
 
     def setup_logger(self):
         logger = logging.getLogger(__name__)
@@ -101,7 +105,7 @@ class EmotionDetector:
             3: ["TensorrtExecutionProvider"],
         }
 
-        return onnxruntime.InferenceSession(model_name, providers=providers_options[providers])
+        return onnxruntime.InferenceSession(model_name, providers=["CPUExecutionProvider"])
 
     def recognize_emotion(self, face: np.ndarray) -> str:
         try:
@@ -143,9 +147,7 @@ class EmotionDetector:
                 _, preds = torch.max(outputs.data, 1)
                 preds = preds.cpu().numpy()[0]
 
-                predicted_emotion_label = EmotionDetector.EMOTION_DICT[preds]
-
-            return predicted_emotion_label
+            return preds
         except cv2.error as e:
             self.logger.error("No emotion detected: ", e)
 
@@ -195,6 +197,7 @@ class EmotionDetector:
                 if display_window:
                     cv2.imshow("Output", self.img)
                 if cv2.waitKey(1) & 0xFF == ord("q"):
+                    print(self.bbox_predictions)
                     break
                 fps.update()
                 success, self.img = cap.read()
@@ -236,9 +239,11 @@ class EmotionDetector:
 
                 emotion = self.recognize_emotion(face)
 
+                self.bbox_predictions[i].append(emotion)
+
                 cv2.putText(
                     self.img,
-                    emotion,
+                    EmotionDetector.EMOTION_DICT[emotion] + " - " "BBOX1" if i == 0 else "BBOX2",
                     (x_min + 5, y_min - 20),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.8,
