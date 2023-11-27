@@ -10,7 +10,20 @@ import torchvision.transforms as transforms
 from imutils.video import FPS
 from PIL import Image
 
+from train.models import resnet
+
 sys.path.append("../")
+
+
+def setup_logger():
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    formatter = logging.Formatter("%(levelname)s - %(message)s")
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+    return logger
 
 
 def to_numpy(tensor):
@@ -20,30 +33,27 @@ def to_numpy(tensor):
 
 
 def calculate_winner(bbox_predictions):
-    classes_weights = {
+    weights = {
         0: -1,
         1: 1,
         2: 0,
         None: 0,
     }
 
-    competitor_1 = bbox_predictions["bbox_left"]
-    competitor_2 = bbox_predictions["bbox_right"]
+    left_bbox = bbox_predictions["bbox_left"]
+    right_bbox = bbox_predictions["bbox_right"]
 
     def calculate_score(competitor):
-        score = [classes_weights[num] for num in competitor]
-        print(score)
+        score = [weights[num] for num in competitor]
         return sum(score)
 
-    score_1 = calculate_score(competitor_1)
-    score_2 = calculate_score(competitor_2)
+    score_left = calculate_score(left_bbox)
+    score_right = calculate_score(right_bbox)
 
-    if score_1 > score_2:
-        print("Winner: left")
-        return "left" # 0
+    if score_left > score_right:
+        return "Esquerda"  # 0
 
-    print("Winner: right")
-    return "right" # 1
+    return "Direita"  # 1
 
 
 class EmotionDetector:
@@ -62,10 +72,10 @@ class EmotionDetector:
 
     def __init__(
         self,
-        accelerator: str = "cuda" if torch.cuda.is_available() else "cpu",
-        backend_option: int = 0 if torch.cuda.is_available() else 1,
         model_name: str = "resnet18.onnx",
-        providers=1,
+        model_option: str = "onnx",
+        backend_option: int = 0 if torch.cuda.is_available() else 1,
+        providers: int = 1,
         num_faces=None,
     ):
         """
@@ -75,29 +85,33 @@ class EmotionDetector:
             use_cuda (bool, optional): Whether to use CUDA for faster processing if a GPU is available. Default is cuda if CUDA is available, otherwise cpu.
             backend_option (int, optional): Backend option for OpenCV's DNN module. Default is 0 if CUDA is available, otherwise 1.
         """
-        self.logger = self.setup_logger()
-        self.face_model = self.load_face_model(backend_option)
-        self.device = self.setup_device(accelerator)
-        self.emotion_model = self.load_trained_model(
-            f"train/models/{model_name}", providers
-        )
+        self.logger = setup_logger()
+
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model_option = model_option
         self.num_faces = num_faces
         self.bbox_predictions = {
             "bbox_left": [],
             "bbox_right": [],
         }
 
-    def setup_logger(self):
-        logger = logging.getLogger(__name__)
-        logger.setLevel(logging.DEBUG)
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)
-        formatter = logging.Formatter("%(levelname)s - %(message)s")
-        console_handler.setFormatter(formatter)
-        logger.addHandler(console_handler)
-        return logger
+        self.face_model = self.load_face_model(backend_option)
+        self.emotion_model = self.load_trained_model(
+            f"train/models/{model_name}",
+            model_option,
+            providers=providers if model_option == "onnx" else None,
+        )
 
-    def load_face_model(self, backend_option: int = 1):
+    def load_face_model(self, backend_option: int) -> cv2.dnn_Net:
+        """
+        Load the face model for face detection.
+
+        Parameters:
+            backend_option (int): Backend option for OpenCV's DNN module.
+
+        Returns:
+            cv2.dnn_Net: The loaded face model for face detection.
+        """
         face_model = cv2.dnn.readNetFromCaffe(
             "train/models/face_detector/res10_300x300_ssd_iter_140000.prototxt",
             "train/models/face_detector/res10_300x300_ssd_iter_140000.caffemodel",
@@ -112,37 +126,39 @@ class EmotionDetector:
         face_model.setPreferableTarget(backend_target_pairs[backend_option][1])
         return face_model
 
-    def setup_device(self, accelerator):
-        if accelerator == "cuda":
-            if torch.cuda.is_available():
-                return torch.device("cuda")
-            else:
-                print("CUDA is not available. Using CPU instead.")
-
-        return torch.device("cpu")
-
-    def load_trained_model(
-        self, model_name: str, providers
-    ) -> onnxruntime.InferenceSession:
+    def load_trained_model(self, model_path: str, model_option: str, providers=1):
         """
-        Loads a pre-trained emotion recognition model from the specified path.
+        Load a trained model.
 
         Args:
-            model_path (str): The path to the pre-trained model file.
-            providers (list, optional): The list of providers to use for inference. Defaults to None.
+            model_path (str): The path to the model file or to the checkpoint file.
+            model_option (str): The option for loading the model.
 
         Returns:
-            Face_Emotion_CNN: The loaded pre-trained model.
+            model: The loaded model.
         """
-        providers_options = {
-            1: ["CPUExecutionProvider"],
-            2: ["CUDAExecutionProvider"],
-            3: ["TensorrtExecutionProvider"],
-        }
+        if model_option == "pytorch":
+            model = resnet.ResNet18()
+            model.load_state_dict(
+                torch.load(model_path, map_location=self.device)["model_state_dict"]
+            )
+            model.to(self.device)
+            model.eval()
 
-        return onnxruntime.InferenceSession(
-            model_name, providers=["CPUExecutionProvider"]
-        )
+        elif model_option == "onnx":
+            providers_options = {
+                1: ["CPUExecutionProvider"],
+                2: ["CUDAExecutionProvider"],
+                3: ["TensorrtExecutionProvider"],
+            }
+            model = onnxruntime.InferenceSession(
+                model_path, providers=["CPUExecutionProvider"]
+            )
+
+        elif model_option == "tensorrt":
+            ...
+
+        return model
 
     def recognize_emotion(self, face: np.ndarray) -> str:
         try:
@@ -165,24 +181,30 @@ class EmotionDetector:
                     ),
                 ]
             )
-            resize_frame = cv2.resize(face, (48, 48))
-            inputs = Image.fromarray(resize_frame)
+
+            inputs = Image.fromarray(face).resize((48, 48))
             inputs = transform(inputs).unsqueeze(0).to(self.device)
 
             with torch.no_grad():
                 bs, ncrops, c, h, w = inputs.shape
                 inputs = inputs.view(-1, c, h, w)
 
-                inputs = {self.emotion_model.get_inputs()[0].name: to_numpy(inputs)}
-                outputs = self.emotion_model.run(
-                    [self.emotion_model.get_outputs()[0].name], inputs
-                )
-                outputs = torch.from_numpy(outputs[0])
+                if self.model_option == "pytorch":
+                    outputs = self.emotion_model(inputs)
+
+                elif self.model_option == "onnx":
+                    inputs = {self.emotion_model.get_inputs()[0].name: to_numpy(inputs)}
+                    outputs = self.emotion_model.run(
+                        [self.emotion_model.get_outputs()[0].name], inputs
+                    )
+                    outputs = torch.from_numpy(outputs[0])
+
+                elif self.model_option == "tensorrt":
+                    ...
 
                 # combine results across the crops
                 outputs = outputs.view(bs, ncrops, -1)
                 outputs = torch.sum(outputs, dim=1) / ncrops
-
                 _, preds = torch.max(outputs.data, 1)
                 preds = preds.cpu().numpy()[0]
 
