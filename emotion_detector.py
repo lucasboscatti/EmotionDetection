@@ -1,59 +1,18 @@
-import logging
 import sys
 
 import cv2
 import numpy as np
 import onnxruntime
 import torch
-import torch.nn as nn
 import torchvision.transforms as transforms
 from imutils.video import FPS
 from PIL import Image
 
+from tensort_inference import TensorRTInference 
 from train.models import resnet
+from utils.utils import calculate_winner, setup_logger, to_numpy
 
 sys.path.append("../")
-
-
-def setup_logger():
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.DEBUG)
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
-    formatter = logging.Formatter("%(levelname)s - %(message)s")
-    console_handler.setFormatter(formatter)
-    logger.addHandler(console_handler)
-    return logger
-
-
-def to_numpy(tensor):
-    return (
-        tensor.detach().cpu().numpy() if tensor.requires_grad else tensor.cpu().numpy()
-    )
-
-
-def calculate_winner(bbox_predictions):
-    weights = {
-        0: -1,
-        1: 1,
-        2: 0,
-        None: 0,
-    }
-
-    left_bbox = bbox_predictions["bbox_left"]
-    right_bbox = bbox_predictions["bbox_right"]
-
-    def calculate_score(competitor):
-        score = [weights[num] for num in competitor]
-        return sum(score)
-
-    score_left = calculate_score(left_bbox)
-    score_right = calculate_score(right_bbox)
-
-    if score_left > score_right:
-        return "Esquerda"  # 0
-
-    return "Direita"  # 1
 
 
 class EmotionDetector:
@@ -65,10 +24,10 @@ class EmotionDetector:
         backend_option (int, optional): Backend option for OpenCV's DNN module. Default is 1.
 
     Attributes:
-        EMOTION_DICT (dict): A dictionary mapping emotion labels to their corresponding names.
+        EMOTIONS (dict): A dictionary mapping emotion labels to their corresponding names.
     """
 
-    EMOTION_DICT = {0: "BAD", 1: "GOOD", 2: "NEUTRAL"}
+    EMOTIONS = {0: "BAD", 1: "GOOD", 2: "NEUTRAL"}
 
     def __init__(
         self,
@@ -76,6 +35,7 @@ class EmotionDetector:
         model_option: str = "onnx",
         backend_option: int = 0 if torch.cuda.is_available() else 1,
         providers: int = 1,
+        fp16=False,
         num_faces=None,
     ):
         """
@@ -100,6 +60,7 @@ class EmotionDetector:
             f"train/models/{model_name}",
             model_option,
             providers=providers if model_option == "onnx" else None,
+            fp16=fp16
         )
 
     def load_face_model(self, backend_option: int) -> cv2.dnn_Net:
@@ -126,7 +87,7 @@ class EmotionDetector:
         face_model.setPreferableTarget(backend_target_pairs[backend_option][1])
         return face_model
 
-    def load_trained_model(self, model_path: str, model_option: str, providers=1):
+    def load_trained_model(self, model_path: str, providers=1, fp16=False):
         """
         Load a trained model.
 
@@ -137,7 +98,7 @@ class EmotionDetector:
         Returns:
             model: The loaded model.
         """
-        if model_option == "pytorch":
+        if self.model_option == "pytorch":
             model = resnet.ResNet18()
             model.load_state_dict(
                 torch.load(model_path, map_location=self.device)["model_state_dict"]
@@ -145,18 +106,22 @@ class EmotionDetector:
             model.to(self.device)
             model.eval()
 
-        elif model_option == "onnx":
+        elif self.model_option == "onnx":
             providers_options = {
                 1: ["CPUExecutionProvider"],
                 2: ["CUDAExecutionProvider"],
                 3: ["TensorrtExecutionProvider"],
             }
             model = onnxruntime.InferenceSession(
-                model_path, providers=["CPUExecutionProvider"]
+                model_path, providers=providers_options[providers]
             )
 
-        elif model_option == "tensorrt":
-            ...
+        elif self.model_option == "tensorrt":
+            ENGINE_FILE_PATH = model_path + "_b{}_{}.engine"
+
+            model = TensorRTInference(
+                model_path, ENGINE_FILE_PATH, 1 << 30, 1, fp16=fp16
+            )
 
         return model
 
@@ -200,7 +165,8 @@ class EmotionDetector:
                     outputs = torch.from_numpy(outputs[0])
 
                 elif self.model_option == "tensorrt":
-                    ...
+                    outputs = self.emotion_model(inputs)
+                    print("TensorRT Output: ", outputs)
 
                 # combine results across the crops
                 outputs = outputs.view(bs, ncrops, -1)
@@ -322,7 +288,7 @@ class EmotionDetector:
                         self.bbox_predictions["bbox_right"].append(emotion_2)
                         cv2.putText(
                             self.img,
-                            EmotionDetector.EMOTION_DICT[emotion_1],
+                            EmotionDetector.EMOTIONS[emotion_1],
                             (x_min_1 + 5, y_min_1 - 20),
                             cv2.FONT_HERSHEY_SIMPLEX,
                             0.8,
@@ -332,7 +298,7 @@ class EmotionDetector:
                         )
                         cv2.putText(
                             self.img,
-                            EmotionDetector.EMOTION_DICT[emotion_2],
+                            EmotionDetector.EMOTIONS[emotion_2],
                             (x_min_2 + 5, y_min_2 - 20),
                             cv2.FONT_HERSHEY_SIMPLEX,
                             0.8,
@@ -345,7 +311,7 @@ class EmotionDetector:
                         self.bbox_predictions["bbox_right"].append(emotion_1)
                         cv2.putText(
                             self.img,
-                            EmotionDetector.EMOTION_DICT[emotion_2],
+                            EmotionDetector.EMOTIONS[emotion_2],
                             (x_min_2 + 5, y_min_2 - 20),
                             cv2.FONT_HERSHEY_SIMPLEX,
                             0.8,
@@ -355,7 +321,7 @@ class EmotionDetector:
                         )
                         cv2.putText(
                             self.img,
-                            EmotionDetector.EMOTION_DICT[emotion_1],
+                            EmotionDetector.EMOTIONS[emotion_1],
                             (x_min_1 + 5, y_min_1 - 20),
                             cv2.FONT_HERSHEY_SIMPLEX,
                             0.8,
@@ -385,7 +351,7 @@ class EmotionDetector:
 
                     cv2.putText(
                         self.img,
-                        EmotionDetector.EMOTION_DICT[emotion],
+                        EmotionDetector.EMOTIONS[emotion],
                         (x_min + 5, y_min - 20),
                         cv2.FONT_HERSHEY_SIMPLEX,
                         0.8,
