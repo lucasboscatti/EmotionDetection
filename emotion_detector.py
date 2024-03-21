@@ -1,3 +1,5 @@
+import logging
+import mimetypes
 import sys
 
 import cv2
@@ -8,11 +10,21 @@ import torchvision.transforms as transforms
 from imutils.video import FPS
 from PIL import Image
 
-from tensort_inference import TensorRTInference 
 from train.models import resnet
-from utils.utils import calculate_winner, setup_logger, to_numpy
+from utils.utils import calculate_winner, to_numpy
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+try:
+    from tensort_inference import TensorRTInference
+except ImportError:
+    TensorRT = False
+    logger.info("TensorRTInference not found.")
 
 sys.path.append("../")
+
+CUDA = torch.cuda.is_available()
 
 
 class EmotionDetector:
@@ -31,12 +43,12 @@ class EmotionDetector:
 
     def __init__(
         self,
-        model_name: str = "resnet18.onnx",
-        model_option: str = "onnx",
-        backend_option: int = 0 if torch.cuda.is_available() else 1,
-        providers: int = 1,
-        fp16=False,
-        num_faces=None,
+        model_name: str,
+        model_option: str,
+        backend_option: int,
+        providers: int,
+        fp16: bool = False,
+        game_mode: bool = False,
     ):
         """
         Initializes the Detector object.
@@ -45,11 +57,10 @@ class EmotionDetector:
             use_cuda (bool, optional): Whether to use CUDA for faster processing if a GPU is available. Default is cuda if CUDA is available, otherwise cpu.
             backend_option (int, optional): Backend option for OpenCV's DNN module. Default is 0 if CUDA is available, otherwise 1.
         """
-        self.logger = setup_logger()
 
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda" if CUDA else "cpu")
         self.model_option = model_option
-        self.num_faces = num_faces
+        self.game_mode = game_mode
         self.bbox_predictions = {
             "bbox_left": [],
             "bbox_right": [],
@@ -57,10 +68,9 @@ class EmotionDetector:
 
         self.face_model = self.load_face_model(backend_option)
         self.emotion_model = self.load_trained_model(
-            f"train/models/{model_name}",
-            model_option,
-            providers=providers if model_option == "onnx" else None,
-            fp16=fp16
+            model_name,
+            providers=providers,
+            fp16=fp16,
         )
 
     def load_face_model(self, backend_option: int) -> cv2.dnn_Net:
@@ -77,6 +87,7 @@ class EmotionDetector:
             "train/models/face_detector/res10_300x300_ssd_iter_140000.prototxt",
             "train/models/face_detector/res10_300x300_ssd_iter_140000.caffemodel",
         )
+
         backend_target_pairs = [
             [cv2.dnn.DNN_BACKEND_OPENCV, cv2.dnn.DNN_TARGET_CPU],
             [cv2.dnn.DNN_BACKEND_CUDA, cv2.dnn.DNN_TARGET_CUDA],
@@ -87,17 +98,19 @@ class EmotionDetector:
         face_model.setPreferableTarget(backend_target_pairs[backend_option][1])
         return face_model
 
-    def load_trained_model(self, model_path: str, providers=1, fp16=False):
+    def load_trained_model(self, model_name: str, providers: int, fp16: bool):
         """
         Load a trained model.
 
         Args:
-            model_path (str): The path to the model file or to the checkpoint file.
+            model_name (str): The path to the model file or to the checkpoint file.
             model_option (str): The option for loading the model.
 
         Returns:
             model: The loaded model.
         """
+        model_path = f"train/models/{model_name}"
+
         if self.model_option == "pytorch":
             model = resnet.ResNet18()
             model.load_state_dict(
@@ -117,6 +130,10 @@ class EmotionDetector:
             )
 
         elif self.model_option == "tensorrt":
+            if not TensorRT:
+                logger.error("TensorRTInference not found.")
+                return
+
             ENGINE_FILE_PATH = model_path + "_b{}_{}.engine"
 
             model = TensorRTInference(
@@ -125,36 +142,63 @@ class EmotionDetector:
 
         return model
 
+    def start_inference(self, file, display_window=True):
+        if file in ["0", "realsense"]:
+            self.process_video(file, display_window=display_window)
+
+        mimetypes.init()
+        mimestart = mimetypes.guess_type(file)[0]
+
+        if mimestart != None:
+            mimestart = mimestart.split("/")[0]
+
+            if mimestart == "video":
+                self.process_video(file, display_window=display_window)
+
+            elif mimestart == "image":
+                self.process_image(file)
+
+        logger.error("Invalid file type.")
+
+    def preprocess_image(self, image: np.ndarray):
+        """
+        Preprocesses an image.
+
+        Args:
+            img_name (str): The path to the input image file.
+        """
+        transform = transforms.Compose(
+            [
+                transforms.Grayscale(),
+                transforms.TenCrop(40),
+                transforms.Lambda(
+                    lambda crops: torch.stack(
+                        [transforms.ToTensor()(crop) for crop in crops]
+                    )
+                ),
+                transforms.Lambda(
+                    lambda tensors: torch.stack(
+                        [
+                            transforms.Normalize(mean=(0,), std=(255,))(t)
+                            for t in tensors
+                        ]
+                    )
+                ),
+            ]
+        )
+
+        inputs = Image.fromarray(image).resize((48, 48))
+        return transform(inputs).unsqueeze(0).to(self.device)
+
     def recognize_emotion(self, face: np.ndarray) -> str:
         try:
-            transform = transforms.Compose(
-                [
-                    transforms.Grayscale(),
-                    transforms.TenCrop(40),
-                    transforms.Lambda(
-                        lambda crops: torch.stack(
-                            [transforms.ToTensor()(crop) for crop in crops]
-                        )
-                    ),
-                    transforms.Lambda(
-                        lambda tensors: torch.stack(
-                            [
-                                transforms.Normalize(mean=(0,), std=(255,))(t)
-                                for t in tensors
-                            ]
-                        )
-                    ),
-                ]
-            )
-
-            inputs = Image.fromarray(face).resize((48, 48))
-            inputs = transform(inputs).unsqueeze(0).to(self.device)
+            inputs = self.preprocess_image(face)
 
             with torch.no_grad():
                 bs, ncrops, c, h, w = inputs.shape
                 inputs = inputs.view(-1, c, h, w)
 
-                if self.model_option == "pytorch":
+                if self.model_option in ["pytorch", "tensorrt"]:
                     outputs = self.emotion_model(inputs)
 
                 elif self.model_option == "onnx":
@@ -164,11 +208,6 @@ class EmotionDetector:
                     )
                     outputs = torch.from_numpy(outputs[0])
 
-                elif self.model_option == "tensorrt":
-                    outputs = self.emotion_model(inputs)
-                    print("TensorRT Output: ", outputs)
-
-                # combine results across the crops
                 outputs = outputs.view(bs, ncrops, -1)
                 outputs = torch.sum(outputs, dim=1) / ncrops
                 _, preds = torch.max(outputs.data, 1)
@@ -176,7 +215,7 @@ class EmotionDetector:
 
             return preds
         except cv2.error as e:
-            self.logger.error("No emotion detected: ", e)
+            logger.error("No emotion detected: ", e)
 
     def process_image(self, img_name: str) -> None:
         """
@@ -185,10 +224,9 @@ class EmotionDetector:
         Args:
             img_name (str): The path to the input image file.
         """
-        self.img = cv2.imread(img_name)
-        self.height, self.width = self.img.shape[:2]
-        self.process_frame()
-        cv2.imshow("Output", self.img)
+        image = cv2.imread(img_name)
+        self.process_frame(image)
+        cv2.imshow("Output", image)
         cv2.waitKey(0)
 
     def process_video(self, video_path: str, display_window: bool = True) -> None:
@@ -203,49 +241,51 @@ class EmotionDetector:
             display_window (bool, optional): Whether to display the processed image using cv2.imshow.
                 Defaults to True.
         """
-        if video_path == "realsense":
-            video_path = "v4l2src device=/dev/video2 ! video/x-raw, width=640, height=480 ! videoconvert ! video/x-raw,format=BGR ! appsink"
 
-        self.logger.info("Video path: %s", video_path)
+        video_path = (
+            "v4l2src device=/dev/video2 ! video/x-raw, width=640, height=480 ! videoconvert ! video/x-raw,format=BGR ! appsink"
+            if video_path == "realsense"
+            else 0
+        )
+
+        logger.info("Video path: %s", video_path)
 
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
-            self.logger.error("Error opening video stream or file")
-            return
+            logger.error("Error opening video stream or file")
 
-        success, self.img = cap.read()
-        self.height, self.width = self.img.shape[:2]
+        success, image = cap.read()
 
         fps = FPS().start()
 
         while success:
             try:
-                self.process_frame()
-                if display_window:
-                    cv2.imshow("Output", self.img)
+                self.process_frame(image)
+                cv2.imshow("Output", image) if display_window else None
+
                 if cv2.waitKey(1) & 0xFF == ord("q"):
-                    if self.num_faces == 2:
+                    if self.game_mode:
                         flag = calculate_winner(self.bbox_predictions)
-                        self.logger.info("O robô deve andar para: %s", flag)
+                        logger.info("O robô deve andar para: %s", flag)
                     break
                 fps.update()
-                success, self.img = cap.read()
+                success, image = cap.read()
             except KeyboardInterrupt:
                 break
 
         fps.stop()
-        self.logger.info("Elapsed time: %.2f", fps.elapsed())
-        self.logger.info("Approx. FPS: %.2f", fps.fps())
+        logger.info("Elapsed time: %.2f", fps.elapsed())
+        logger.info("Approx. FPS: %.2f", fps.fps())
 
         cap.release()
         cv2.destroyAllWindows()
 
-    def process_frame(self) -> None:
+    def process_frame(self, image: np.ndarray) -> None:
         """
         Processes the current frame, detects faces, and recognizes emotions.
         """
         blob = cv2.dnn.blobFromImage(
-            cv2.resize(self.img, (300, 300)),
+            cv2.resize(image, (300, 300)),
             1.0,
             (300, 300),
             (104.0, 177.0, 123.0),
@@ -256,106 +296,118 @@ class EmotionDetector:
         self.face_model.setInput(blob)
         predictions = self.face_model.forward()
 
-        if self.num_faces == 2:
-            try:
-                prediction_1 = predictions[0, 0, 0, 2]
-                prediction_2 = predictions[0, 0, 1, 2]
+        if self.game_mode:
+            self.game_mode_process(predictions, image)
 
-                if prediction_1 > 0.5 and prediction_2 > 0.5:
-                    bbox_1 = predictions[0, 0, 0, 3:7] * np.array(
-                        [self.width, self.height, self.width, self.height]
-                    )
-                    bbox_2 = predictions[0, 0, 1, 3:7] * np.array(
-                        [self.width, self.height, self.width, self.height]
-                    )
-                    (x_min_1, y_min_1, x_max_1, y_max_1) = bbox_1.astype("int")
-                    (x_min_2, y_min_2, x_max_2, y_max_2) = bbox_2.astype("int")
-                    cv2.rectangle(
-                        self.img, (x_min_1, y_min_1), (x_max_1, y_max_1), (0, 0, 255), 2
-                    )
-                    cv2.rectangle(
-                        self.img, (x_min_2, y_min_2), (x_max_2, y_max_2), (0, 0, 255), 2
-                    )
+        self.default_mode_process(predictions, image)
 
-                    face_1 = self.img[y_min_1:y_max_1, x_min_1:x_max_1]
-                    face_2 = self.img[y_min_2:y_max_2, x_min_2:x_max_2]
+    def game_mode_process(self, predictions: np.ndarray, image: np.ndarray) -> None:
+        """
+        Processes and displays an image with emotion recognition in game mode.
 
-                    emotion_1 = self.recognize_emotion(face_1)
-                    emotion_2 = self.recognize_emotion(face_2)
+        Args:
+            predictions (np.ndarray): The predictions from the face model.
+            image (np.ndarray): The input image.
+        """
+        width, height = image.shape[:2]
+        try:
+            prediction_1 = predictions[0, 0, 0, 2]
+            prediction_2 = predictions[0, 0, 1, 2]
 
-                    if x_min_1 < x_min_2:
-                        self.bbox_predictions["bbox_left"].append(emotion_1)
-                        self.bbox_predictions["bbox_right"].append(emotion_2)
-                        cv2.putText(
-                            self.img,
-                            EmotionDetector.EMOTIONS[emotion_1],
-                            (x_min_1 + 5, y_min_1 - 20),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            0.8,
-                            (0, 255, 0),
-                            1,
-                            cv2.LINE_AA,
-                        )
-                        cv2.putText(
-                            self.img,
-                            EmotionDetector.EMOTIONS[emotion_2],
-                            (x_min_2 + 5, y_min_2 - 20),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            0.8,
-                            (0, 255, 0),
-                            1,
-                            cv2.LINE_AA,
-                        )
-                    else:
-                        self.bbox_predictions["bbox_left"].append(emotion_2)
-                        self.bbox_predictions["bbox_right"].append(emotion_1)
-                        cv2.putText(
-                            self.img,
-                            EmotionDetector.EMOTIONS[emotion_2],
-                            (x_min_2 + 5, y_min_2 - 20),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            0.8,
-                            (0, 255, 0),
-                            1,
-                            cv2.LINE_AA,
-                        )
-                        cv2.putText(
-                            self.img,
-                            EmotionDetector.EMOTIONS[emotion_1],
-                            (x_min_1 + 5, y_min_1 - 20),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            0.8,
-                            (0, 255, 0),
-                            1,
-                            cv2.LINE_AA,
-                        )
-                else:
-                    self.logger.error("Only one face detected.")
-            except:
-                self.logger.error("Only one face detected.")
+            if prediction_1 > 0.5 and prediction_2 > 0.5:
+                bbox_1 = predictions[0, 0, 0, 3:7] * np.array(
+                    [width, height, width, height]
+                )
+                bbox_2 = predictions[0, 0, 1, 3:7] * np.array(
+                    [width, height, width, height]
+                )
+                (x_min_1, y_min_1, x_max_1, y_max_1) = bbox_1.astype("int")
+                (x_min_2, y_min_2, x_max_2, y_max_2) = bbox_2.astype("int")
+                cv2.rectangle(
+                    image, (x_min_1, y_min_1), (x_max_1, y_max_1), (0, 0, 255), 2
+                )
+                cv2.rectangle(
+                    image, (x_min_2, y_min_2), (x_max_2, y_max_2), (0, 0, 255), 2
+                )
 
-        else:
-            for i in range(predictions.shape[2]):
-                if predictions[0, 0, i, 2] > 0.5:
-                    bbox = predictions[0, 0, i, 3:7] * np.array(
-                        [self.width, self.height, self.width, self.height]
-                    )
-                    (x_min, y_min, x_max, y_max) = bbox.astype("int")
-                    cv2.rectangle(
-                        self.img, (x_min, y_min), (x_max, y_max), (0, 0, 255), 2
-                    )
+                face_1 = image[y_min_1:y_max_1, x_min_1:x_max_1]
+                face_2 = image[y_min_2:y_max_2, x_min_2:x_max_2]
 
-                    face = self.img[y_min:y_max, x_min:x_max]
+                emotion_1 = self.recognize_emotion(face_1)
+                emotion_2 = self.recognize_emotion(face_2)
 
-                    emotion = self.recognize_emotion(face)
-
+                if x_min_1 < x_min_2:
+                    self.bbox_predictions["bbox_left"].append(emotion_1)
+                    self.bbox_predictions["bbox_right"].append(emotion_2)
                     cv2.putText(
-                        self.img,
-                        EmotionDetector.EMOTIONS[emotion],
-                        (x_min + 5, y_min - 20),
+                        image,
+                        EmotionDetector.EMOTIONS[emotion_1],
+                        (x_min_1 + 5, y_min_1 - 20),
                         cv2.FONT_HERSHEY_SIMPLEX,
                         0.8,
                         (0, 255, 0),
                         1,
                         cv2.LINE_AA,
                     )
+                    cv2.putText(
+                        image,
+                        EmotionDetector.EMOTIONS[emotion_2],
+                        (x_min_2 + 5, y_min_2 - 20),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.8,
+                        (0, 255, 0),
+                        1,
+                        cv2.LINE_AA,
+                    )
+                else:
+                    self.bbox_predictions["bbox_left"].append(emotion_2)
+                    self.bbox_predictions["bbox_right"].append(emotion_1)
+                    cv2.putText(
+                        image,
+                        EmotionDetector.EMOTIONS[emotion_2],
+                        (x_min_2 + 5, y_min_2 - 20),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.8,
+                        (0, 255, 0),
+                        1,
+                        cv2.LINE_AA,
+                    )
+                    cv2.putText(
+                        image,
+                        EmotionDetector.EMOTIONS[emotion_1],
+                        (x_min_1 + 5, y_min_1 - 20),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.8,
+                        (0, 255, 0),
+                        1,
+                        cv2.LINE_AA,
+                    )
+            else:
+                self.logger.error("Only one face detected.")
+        except:
+            self.logger.error("Only one face detected.")
+
+    def default_mode_process(self, predictions, image):
+        width, height = image.shape[:2]
+        for i in range(predictions.shape[2]):
+            if predictions[0, 0, i, 2] > 0.5:
+                bbox = predictions[0, 0, i, 3:7] * np.array(
+                    [width, height, width, height]
+                )
+                (x_min, y_min, x_max, y_max) = bbox.astype("int")
+                cv2.rectangle(image, (x_min, y_min), (x_max, y_max), (0, 0, 255), 2)
+
+                face = image[y_min:y_max, x_min:x_max]
+
+                emotion = self.recognize_emotion(face)
+
+                cv2.putText(
+                    image,
+                    EmotionDetector.EMOTIONS[emotion],
+                    (x_min + 5, y_min - 20),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.8,
+                    (0, 255, 0),
+                    1,
+                    cv2.LINE_AA,
+                )
