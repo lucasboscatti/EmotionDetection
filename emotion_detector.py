@@ -84,8 +84,8 @@ class EmotionDetector:
             cv2.dnn_Net: The loaded face model for face detection.
         """
         face_model = cv2.dnn.readNetFromCaffe(
-            "train/models/face_detector/res10_300x300_ssd_iter_140000.prototxt",
-            "train/models/face_detector/res10_300x300_ssd_iter_140000.caffemodel",
+            "ready_to_use_models/face_model/res10_300x300_ssd_iter_140000.prototxt",
+            "ready_to_use_models/face_model/res10_300x300_ssd_iter_140000.caffemodel",
         )
 
         backend_target_pairs = [
@@ -109,7 +109,7 @@ class EmotionDetector:
         Returns:
             model: The loaded model.
         """
-        model_path = f"train/models/{model_name}"
+        model_path = f"ready_to_use_models/emotion_model/{model_name}"
 
         if self.model_option == "pytorch":
             model = resnet.ResNet18()
@@ -186,14 +186,15 @@ class EmotionDetector:
                 ),
             ]
         )
-
-        inputs = Image.fromarray(image).resize((48, 48))
-        return transform(inputs).unsqueeze(0).to(self.device)
+        try:
+            inputs = Image.fromarray(image).resize((48, 48))
+            return transform(inputs).unsqueeze(0).to(self.device)
+        except ValueError as e:
+            logger.error("Error preprocessing image: ", e)
 
     def recognize_emotion(self, face: np.ndarray) -> str:
-        try:
-            inputs = self.preprocess_image(face)
-
+        inputs = self.preprocess_image(face)
+        if inputs is not None:
             with torch.no_grad():
                 bs, ncrops, c, h, w = inputs.shape
                 inputs = inputs.view(-1, c, h, w)
@@ -214,8 +215,8 @@ class EmotionDetector:
                 preds = preds.cpu().numpy()[0]
 
             return preds
-        except cv2.error as e:
-            logger.error("No emotion detected: ", e)
+
+        logger.error("No face detected.")
 
     def process_image(self, img_name: str) -> None:
         """
@@ -309,33 +310,29 @@ class EmotionDetector:
             predictions (np.ndarray): The predictions from the face model.
             image (np.ndarray): The input image.
         """
-        width, height = image.shape[:2]
-        try:
-            prediction_1 = predictions[0, 0, 0, 2]
-            prediction_2 = predictions[0, 0, 1, 2]
+        height, width = image.shape[:2]
+        prediction_1 = predictions[0, 0, 0, 2]
+        prediction_2 = predictions[0, 0, 1, 2]
 
-            if prediction_1 > 0.5 and prediction_2 > 0.5:
-                bbox_1 = predictions[0, 0, 0, 3:7] * np.array(
-                    [width, height, width, height]
-                )
-                bbox_2 = predictions[0, 0, 1, 3:7] * np.array(
-                    [width, height, width, height]
-                )
-                (x_min_1, y_min_1, x_max_1, y_max_1) = bbox_1.astype("int")
-                (x_min_2, y_min_2, x_max_2, y_max_2) = bbox_2.astype("int")
-                cv2.rectangle(
-                    image, (x_min_1, y_min_1), (x_max_1, y_max_1), (0, 0, 255), 2
-                )
-                cv2.rectangle(
-                    image, (x_min_2, y_min_2), (x_max_2, y_max_2), (0, 0, 255), 2
-                )
+        if prediction_1 > 0.5 and prediction_2 > 0.5:
+            bbox_1 = predictions[0, 0, 0, 3:7] * np.array(
+                [width, height, width, height]
+            )
+            bbox_2 = predictions[0, 0, 1, 3:7] * np.array(
+                [width, height, width, height]
+            )
+            (x_min_1, y_min_1, x_max_1, y_max_1) = bbox_1.astype("int")
+            (x_min_2, y_min_2, x_max_2, y_max_2) = bbox_2.astype("int")
+            cv2.rectangle(image, (x_min_1, y_min_1), (x_max_1, y_max_1), (0, 0, 255), 2)
+            cv2.rectangle(image, (x_min_2, y_min_2), (x_max_2, y_max_2), (0, 0, 255), 2)
 
-                face_1 = image[y_min_1:y_max_1, x_min_1:x_max_1]
-                face_2 = image[y_min_2:y_max_2, x_min_2:x_max_2]
+            face_1 = image[y_min_1:y_max_1, x_min_1:x_max_1]
+            face_2 = image[y_min_2:y_max_2, x_min_2:x_max_2]
 
-                emotion_1 = self.recognize_emotion(face_1)
-                emotion_2 = self.recognize_emotion(face_2)
+            emotion_1 = self.recognize_emotion(face_1)
+            emotion_2 = self.recognize_emotion(face_2)
 
+            if emotion_1 is not None and emotion_2 is not None:
                 if x_min_1 < x_min_2:
                     self.bbox_predictions["bbox_left"].append(emotion_1)
                     self.bbox_predictions["bbox_right"].append(emotion_2)
@@ -359,6 +356,7 @@ class EmotionDetector:
                         1,
                         cv2.LINE_AA,
                     )
+                    return
                 else:
                     self.bbox_predictions["bbox_left"].append(emotion_2)
                     self.bbox_predictions["bbox_right"].append(emotion_1)
@@ -382,13 +380,11 @@ class EmotionDetector:
                         1,
                         cv2.LINE_AA,
                     )
-            else:
-                self.logger.error("Only one face detected.")
-        except:
-            self.logger.error("Only one face detected.")
+        else:
+            logger.warning("No faces detected OR only one face detected.")
 
     def default_mode_process(self, predictions, image):
-        width, height = image.shape[:2]
+        height, width = image.shape[:2]
         for i in range(predictions.shape[2]):
             if predictions[0, 0, i, 2] > 0.5:
                 bbox = predictions[0, 0, i, 3:7] * np.array(
@@ -401,13 +397,14 @@ class EmotionDetector:
 
                 emotion = self.recognize_emotion(face)
 
-                cv2.putText(
-                    image,
-                    EmotionDetector.EMOTIONS[emotion],
-                    (x_min + 5, y_min - 20),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.8,
-                    (0, 255, 0),
-                    1,
-                    cv2.LINE_AA,
-                )
+                if emotion:
+                    cv2.putText(
+                        image,
+                        EmotionDetector.EMOTIONS[emotion],
+                        (x_min + 5, y_min - 20),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.8,
+                        (0, 255, 0),
+                        1,
+                        cv2.LINE_AA,
+                    )
