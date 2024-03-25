@@ -13,9 +13,9 @@ warnings.filterwarnings("ignore")
 parser = argparse.ArgumentParser(description="Final Project FER Nero")
 parser.add_argument("--batch_size", default=64, type=int)
 parser.add_argument("--seed", default=0, type=int)
-parser.add_argument("--data_path", default="datasets/fer2013/fer2013.csv", type=str)
+parser.add_argument("--data_path", default="./datasets/fer2013/fer2013.csv", type=str)
 parser.add_argument(
-    "--checkpoint", default="train/models/best_checkpoint.tar", type=str
+    "--checkpoint", default="./models/best_checkpoint.tar", type=str
 )
 parser.add_argument("--arch", default="ResNet18", type=str)
 parser.add_argument("--Ncrop", default=True, type=eval)

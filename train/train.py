@@ -10,7 +10,7 @@ import warnings
 import torch
 import torch.nn as nn
 import torchvision.utils as vutils
-from train.dataset import get_dataloaders
+from dataset import get_dataloaders
 from torch.autograd import Variable
 from torch.cuda.amp import GradScaler, autocast
 from torch.utils.tensorboard import SummaryWriter
@@ -30,8 +30,8 @@ warnings.filterwarnings("ignore")
 
 parser = argparse.ArgumentParser(description="USTC Computer Vision Final Project")
 parser.add_argument("--arch", default="ResNet18", type=str)
-parser.add_argument("--epochs", default=300, type=int)
-parser.add_argument("--batch_size", default=64, type=int)
+parser.add_argument("--epochs", default=200, type=int)
+parser.add_argument("--batch_size", default=32, type=int)
 parser.add_argument("--scheduler", default="reduce", type=str, help="[reduce, cos]")
 parser.add_argument("--lr", default=0.1, type=float)
 parser.add_argument("--momentum", default=0.9, type=float)
@@ -43,7 +43,7 @@ parser.add_argument("--mixup_alpha", default=1.0, type=float)
 parser.add_argument("--Ncrop", default=True, type=eval)
 parser.add_argument(
     "--data_path",
-    default="/home/nero-ia/Documents/Boscatti/EmotionDetection/train/datasets/fer2013/fer2013.csv",
+    default="./datasets/fer2013/fer2013.csv",
     type=str,
 )
 parser.add_argument("--results", default="./results", type=str)

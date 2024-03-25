@@ -39,7 +39,7 @@ class CustomDataset(Dataset):
         return sample
 
 
-def load_data(path="train/datasets/fer2013/fer2013.csv"):
+def load_data(path="./datasets/fer2013/fer2013.csv"):
     fer2013 = pd.read_csv(path)
 
     new_emotion_mapping = {
@@ -77,7 +77,7 @@ def prepare_data(data):
     return image_array, image_label
 
 
-def get_dataloaders(path="train/datasets/fer2013/fer2013.csv", bs=64, augment=True):
+def get_dataloaders(path="./datasets/fer2013/fer2013.csv", bs=64, augment=True):
     """Prepare train, val, & test dataloaders
     Augment training data using:
         - cropping
