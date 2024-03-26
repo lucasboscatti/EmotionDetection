@@ -1,10 +1,17 @@
 import argparse
 import warnings
 
+import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 from dataset import get_dataloaders
-from sklearn.metrics import confusion_matrix, f1_score, precision_score, recall_score
+from sklearn.metrics import (
+    ConfusionMatrixDisplay,
+    confusion_matrix,
+    f1_score,
+    precision_score,
+    recall_score,
+)
 
 from utils import get_model
 
@@ -14,9 +21,7 @@ parser = argparse.ArgumentParser(description="Final Project FER Nero")
 parser.add_argument("--batch_size", default=64, type=int)
 parser.add_argument("--seed", default=0, type=int)
 parser.add_argument("--data_path", default="./datasets/fer2013/fer2013.csv", type=str)
-parser.add_argument(
-    "--checkpoint", default="./models/best_checkpoint.tar", type=str
-)
+parser.add_argument("--checkpoint", default="./models/best_checkpoint.tar", type=str)
 parser.add_argument("--arch", default="ResNet18", type=str)
 parser.add_argument("--Ncrop", default=True, type=eval)
 
@@ -85,12 +90,16 @@ def evaluate(net, dataloader, loss_fn, Ncrop, device):
     loss = loss_tr / n_samples
     print("--------------------------------------------------------")
     print("Top 1 Accuracy: %2.6f %%" % acc1)
-    print("Top 2 Accuracy: %2.6f %%" % acc2)
     print("Loss: %2.6f" % loss)
     print("Precision: %2.6f" % precision_score(y_gt, y_pred, average="micro"))
     print("Recall: %2.6f" % recall_score(y_gt, y_pred, average="micro"))
     print("F1 Score: %2.6f" % f1_score(y_gt, y_pred, average="micro"))
-    print("Confusion Matrix:\n", confusion_matrix(y_gt, y_pred), "\n")
+    cm = confusion_matrix(y_gt, y_pred)
+    print("Confusion Matrix:\n", cm, "\n")
+    cm = confusion_matrix(y_gt, y_pred)
+    cmd = ConfusionMatrixDisplay(cm)
+    cmd.plot()
+    plt.show()
 
 
 def main():
