@@ -1,7 +1,3 @@
-"""
-Adapted from https://github.com/usef-kh/fer/tree/master/data
-"""
-
 import numpy as np
 import pandas as pd
 import torch
@@ -16,7 +12,6 @@ class CustomDataset(Dataset):
         self.images = images
         self.labels = labels
         self.transform = transform
-
         self.augment = augment
 
     def __len__(self):
@@ -27,7 +22,6 @@ class CustomDataset(Dataset):
             idx = idx.tolist()
 
         img = np.array(self.images[idx])
-
         img = Image.fromarray(img)
 
         if self.transform:
@@ -39,24 +33,21 @@ class CustomDataset(Dataset):
         return sample
 
 
-def load_data(path="./datasets/fer2013/fer2013.csv"):
+def load_data(path):
     fer2013 = pd.read_csv(path)
-
-    new_emotion_mapping = {
-        0: 0, # Angry -> BAD
-        1: 0, # Disgust -> BAD
-        2: 0, # Fear -> BAD
-        3: 1, # Happy -> GOOD
-        4: 0, # Sad -> BAD
-        5: 1, # Surprise -> GOOD
-        6: 2, # Neutral -> NEUTRAL
-    }
-
-    return fer2013, new_emotion_mapping
+    return fer2013
 
 
 def new_labels(emotions):
-    mapping = {0: 0, 1: 0, 2: 0, 3: 1, 4: 0, 5: 1, 6: 2}  # BAD  # GOOD  # NEUTRAL
+    mapping = {
+        0: 0,  # Angry -> BAD
+        1: 0,  # Disgust -> BAD
+        2: 0,  # Fear -> BAD
+        3: 1,  # Happy -> GOOD
+        4: 0,  # Sad -> BAD
+        5: 1,  # Surprise -> GOOD
+        6: 2,  # Neutral -> NEUTRAL
+    }
     return [mapping[num] for num in emotions]
 
 
@@ -77,7 +68,7 @@ def prepare_data(data):
     return image_array, image_label
 
 
-def get_dataloaders(path="./datasets/fer2013/fer2013.csv", bs=64, augment=True):
+def get_dataloaders(path, bs=64, augment=True):
     """Prepare train, val, & test dataloaders
     Augment training data using:
         - cropping
@@ -87,7 +78,7 @@ def get_dataloaders(path="./datasets/fer2013/fer2013.csv", bs=64, augment=True):
     input: path to fer2013 csv file
     output: (Dataloader, Dataloader, Dataloader)"""
 
-    fer2013, _ = load_data(path)
+    fer2013 = load_data(path)
 
     xtrain, ytrain = prepare_data(fer2013[fer2013["Usage"] == "Training"])
     xval, yval = prepare_data(fer2013[fer2013["Usage"] == "PrivateTest"])
