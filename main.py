@@ -47,13 +47,6 @@ def parse_arguments():
         help="Specify whether to display the window (True or False)",
     )
     parser.add_argument(
-        "--option",
-        default="video",
-        type=str,
-        choices=["video", "image"],
-        help="Specify the processing option: 'video' or 'image'",
-    )
-    parser.add_argument(
         "--game_mode",
         default=False,
         type=bool,
