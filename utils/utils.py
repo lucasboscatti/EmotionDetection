@@ -36,7 +36,13 @@ def calculate_winner(bbox_predictions):
     score_left = calculate_score(left_bbox)
     score_right = calculate_score(right_bbox)
 
-    if score_left > score_right:
-        return "Esquerda"  # 0
+    move_decision = ""
 
-    return "Direita"  # 1
+    with open("score.txt", "w") as f:
+        if score_left > score_right:
+            move_decision = "E"
+        else:
+            move_decision = "D"
+        f.write(f"{move_decision}")
+
+    return "Esquerda" if move_decision == "E" else "Direita"
