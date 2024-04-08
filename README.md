@@ -15,22 +15,23 @@ This project is a facial emotion detection system developed by Lucas Boscatti. I
 
 1. Clone this repository to your local machine:
 
-   ```bash
-   git clone <repository_url>
+```
+git clone https://github.com/lucasboscatti/EmotionDetection.git
+```
 
 2. Install the required dependencies:
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+```
+pip install -r requirements.txt
+```
 
 ### Usage
 
 You can run the emotion detection system with different configurations using command-line arguments.
 
-    ```bash
-    python3 main.py [--model_name MODEL_NAME] [--model_option MODEL_OPTION] [--backend_option BACKEND_OPTION] [--providers PROVIDERS] [--file FILE] [--display_window DISPLAY_WINDOW] [--game_mode GAME_MODE]
-    ```
+```
+python3 main.py [--model_name MODEL_NAME] [--model_option MODEL_OPTION] [--backend_option BACKEND_OPTION] [--providers PROVIDERS] [--file FILE] [--display_window DISPLAY_WINDOW] [--game_mode GAME_MODE]
+```
 
 Arguments
 - --model_name: Specify the name of the model file (default: "resnet18.onnx").
@@ -45,18 +46,18 @@ Arguments
 
 ### Basic usage
 
-    ```bash
-    python3 main.py --file "path_to/video.mp4"
-    ```
+```
+python3 main.py --file "path_to/video.mp4"
+```
 
 ### Game mode
 
-    ```bash
-    python3 main.py --file "0" --game_mode True
-    ```
+```
+python3 main.py --file "0" --game_mode True
+```
 
 ### Complex usage
 
-    ```bash
-    python main.py --model_name "emotion_model.onnx" --file "path_to/video.mp4" --display_window False --game_mode False
-    ```
+```
+python main.py --model_name "emotion_model.onnx" --file "path_to/video.mp4" --display_window False --game_mode False
+```
