@@ -17,7 +17,19 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 try:
-    from tensort_inference import TensorRTInference
+    import pycuda.autoinit
+    import pycuda.driver as cuda
+    import tensorRT as trt
+
+    EXPLICIT_BATCH = 1 << (int)(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
+    TRT_LOGGER = trt.Logger(trt.Logger.INFO)
+
+    batch = 1
+    host_inputs = []
+    cuda_inputs = []
+    host_outputs = []
+    cuda_outputs = []
+    bindings = []
 except ImportError:
     TensorRT = False
     logger.info("TensorRTInference not found.")
@@ -134,11 +146,27 @@ class EmotionDetector:
                 logger.error("TensorRTInference not found.")
                 return
 
-            ENGINE_FILE_PATH = model_path + "_b{}_{}.engine"
+            with open(model_path, "rb") as f:
+                serialized_engine = f.read()
 
-            model = TensorRTInference(
-                model_path, ENGINE_FILE_PATH, 1 << 30, 1, fp16=fp16
-            )
+            runtime = trt.Runtime(TRT_LOGGER)
+            engine = runtime.deserialize_cuda_engine(serialized_engine)
+
+            # create buffer
+            for binding in engine:
+                size = trt.volume(engine.get_tensor_shape(binding)) * batch
+                host_mem = cuda.pagelocked_empty(shape=[size], dtype=np.float32)
+                cuda_mem = cuda.mem_alloc(host_mem.nbytes)
+
+                bindings.append(int(cuda_mem))
+                if engine.get_tensor_mode(binding) == trt.TensorIOMode.INPUT:
+                    host_inputs.append(host_mem)
+                    cuda_inputs.append(cuda_mem)
+                else:
+                    host_outputs.append(host_mem)
+                    cuda_outputs.append(cuda_mem)
+
+            return engine
 
         return model
 
@@ -208,6 +236,16 @@ class EmotionDetector:
                         [self.emotion_model.get_outputs()[0].name], inputs
                     )
                     outputs = torch.from_numpy(outputs[0])
+
+                elif self.model_option == "tensorrt":
+                    stream = cuda.Stream()
+                    context = self.emotion_model.create_execution_context()
+                    cuda.memcpy_htod_async(cuda_inputs[0], host_inputs[0], stream)
+                    context.execute_v2(bindings)
+                    cuda.memcpy_dtoh_async(host_outputs[0], cuda_outputs[0], stream)
+                    stream.synchronize()
+                    output = host_outputs[0]
+                    return np.argmax(output)
 
                 outputs = outputs.view(bs, ncrops, -1)
                 outputs = torch.sum(outputs, dim=1) / ncrops
