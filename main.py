@@ -1,16 +1,27 @@
 import argparse
 
 import torch
+from flask import Flask, Response, render_template
 
 from emotion_detector import EmotionDetector
 
 CUDA = torch.cuda.is_available()
+app = Flask(__name__, template_folder="template")
 
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Lucas Boscatti's Final Project Nero")
     parser.add_argument("--model_name", default="resnet18.onnx", type=str)
-    parser.add_argument("--model_option", default="onnx", type=str)
+    parser.add_argument(
+        "--model_option",
+        default="onnx",
+        type=str,
+        choices=["pytorch", "onnx", "tensorrt"],
+        help="""Choose the model to run:
+        1: pytorch
+        2: onnx
+        3: tensorrt""",
+    )
     parser.add_argument(
         "--backend_option",
         default=2 if CUDA else 1,
@@ -35,16 +46,11 @@ def parse_arguments():
         "--file",
         default="0",
         type=str,
+        choices=["0", "realsense", "path_to/video"],
         help="""Specify the input source: 
         '0' to default webcam
-        'realsense' to use the realsense camera
+        'realsense' to use the realsense camera. 
         'path_to/video' to use a video or a image file""",
-    )
-    parser.add_argument(
-        "--display_window",
-        default=True,
-        type=bool,
-        help="Specify whether to display the window (True or False)",
     )
     parser.add_argument(
         "--game_mode",
@@ -56,19 +62,29 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def main():
-    args = parse_arguments()
+@app.route("/")
+def index():
+    """Video streaming home page."""
+    return render_template("index.html")
 
-    detector = EmotionDetector(
-        model_name=args.model_name,
-        model_option=args.model_option,
-        backend_option=args.backend_option,
-        providers=args.providers,
-        game_mode=args.game_mode,
+
+@app.route("/video_feed")
+def video_feed():
+    """Video streaming route. Put this in the src attribute of an img tag."""
+    return Response(
+        detector.start_inference(args.file),
+        mimetype="multipart/x-mixed-replace; boundary=frame",
     )
 
-    detector.start_inference(args.file, display_window=args.display_window)
 
+args = parse_arguments()
 
-if __name__ == "__main__":
-    main()
+detector = EmotionDetector(
+    model_name=args.model_name,
+    model_option=args.model_option,
+    backend_option=args.backend_option,
+    providers=args.providers,
+    game_mode=args.game_mode,
+)
+
+app.run(debug=True)

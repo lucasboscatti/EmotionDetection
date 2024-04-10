@@ -4,8 +4,6 @@ import sys
 
 import cv2
 import numpy as np
-
-# import onnxruntime
 import torch
 import torchvision.transforms as transforms
 from imutils.video import FPS
@@ -16,6 +14,15 @@ from utils.utils import calculate_winner, to_numpy
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+
+
+try:
+    import onnxruntime
+
+    ONNX = True
+
+except ImportError:
+    ONNX = False
 
 try:
     import pycuda.autoinit
@@ -63,7 +70,6 @@ class EmotionDetector:
         model_option: str,
         backend_option: int,
         providers: int,
-        fp16: bool = False,
         game_mode: bool = False,
     ):
         """
@@ -73,7 +79,6 @@ class EmotionDetector:
             use_cuda (bool, optional): Whether to use CUDA for faster processing if a GPU is available. Default is cuda if CUDA is available, otherwise cpu.
             backend_option (int, optional): Backend option for OpenCV's DNN module. Default is 0 if CUDA is available, otherwise 1.
         """
-
         self.device = torch.device("cuda" if CUDA else "cpu")
         self.model_option = model_option
         self.game_mode = game_mode
@@ -83,13 +88,13 @@ class EmotionDetector:
         }
 
         self.face_model = self.load_face_model(backend_option)
+
         if self.model_option == "tensorrt":
             self.engine = self.prepare_engine(model_name)
+
         else:
             self.emotion_model = self.load_trained_model(
-                model_name,
-                providers=providers,
-                fp16=fp16,
+                model_name, providers=providers
             )
 
     def load_face_model(self, backend_option: int) -> cv2.dnn_Net:
@@ -145,7 +150,7 @@ class EmotionDetector:
 
         return engine
 
-    def load_trained_model(self, model_name: str, providers: int, fp16: bool):
+    def load_trained_model(self, model_name: str, providers: int):
         """
         Load a trained model.
 
@@ -166,7 +171,12 @@ class EmotionDetector:
             model.to(self.device)
             model.eval()
 
+            return model
+
         elif self.model_option == "onnx":
+            if not ONNX:
+                logger.error("onnxruntime not found.")
+                return
             providers_options = {
                 1: ["CPUExecutionProvider"],
                 2: ["CUDAExecutionProvider"],
@@ -176,11 +186,11 @@ class EmotionDetector:
                 model_path, providers=providers_options[providers]
             )
 
-        return model
+            return model
 
-    def start_inference(self, file, display_window=True):
-        if file in ["0", "realsense"]:
-            self.process_video(file, display_window=display_window)
+    def start_inference(self, file):
+        if file in ["0", "realsense", "2"]:
+            return self.process_video(file)
 
         mimetypes.init()
         mimestart = mimetypes.guess_type(file)[0]
@@ -189,10 +199,10 @@ class EmotionDetector:
             mimestart = mimestart.split("/")[0]
 
             if mimestart == "video":
-                self.process_video(file, display_window=display_window)
+                return self.process_video(file)
 
             elif mimestart == "image":
-                self.process_image(file)
+                return self.process_image(file)
 
         logger.error("Invalid file type.")
 
@@ -278,7 +288,7 @@ class EmotionDetector:
         cv2.imshow("Output", image)
         cv2.waitKey(0)
 
-    def process_video(self, video_path: str, display_window: bool = True) -> None:
+    def process_video(self, video_path: str):
         """
         Processes a video file, performing emotion recognition on each frame.
 
@@ -287,8 +297,6 @@ class EmotionDetector:
                 if video_path == "realsense", then the video is captured from the realsense camera.
                 if video_path == 0, then the video is captured from the webcam.
                 or else, the video is captured from the specified path.
-            display_window (bool, optional): Whether to display the processed image using cv2.imshow.
-                Defaults to True.
         """
 
         video_path = (
@@ -310,15 +318,23 @@ class EmotionDetector:
         while success:
             try:
                 self.process_frame(image)
-                cv2.imshow("Output", image) if display_window else None
 
                 if cv2.waitKey(1) & 0xFF == ord("q"):
                     if self.game_mode:
                         flag = calculate_winner(self.bbox_predictions)
                         logger.info("O robô deve andar para: %s", flag)
                     break
+
+                _, frame = cv2.imencode(".jpg", image)
+                frame = frame.tobytes()
+
                 fps.update()
                 success, image = cap.read()
+
+                yield (
+                    b"--frame\r\n" b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
+                )
+
             except KeyboardInterrupt:
                 break
 
