@@ -235,7 +235,7 @@ class EmotionDetector:
                 bs, ncrops, c, h, w = inputs.shape
                 inputs = inputs.view(-1, c, h, w)
 
-                if self.model_option in ["pytorch", "tensorrt"]:
+                if self.model_option == "pytorch":
                     outputs = self.emotion_model(inputs)
 
                 elif self.model_option == "onnx":
@@ -253,7 +253,7 @@ class EmotionDetector:
                     context.execute_v2(bindings)
                     cuda.memcpy_dtoh_async(host_outputs[0], cuda_outputs[0], stream)
                     stream.synchronize()
-                    
+
                     output = host_outputs[0]
                     return np.argmax(output)
 
