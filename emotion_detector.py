@@ -4,7 +4,8 @@ import sys
 
 import cv2
 import numpy as np
-import onnxruntime
+
+# import onnxruntime
 import torch
 import torchvision.transforms as transforms
 from imutils.video import FPS
@@ -19,7 +20,9 @@ logger.setLevel(logging.INFO)
 try:
     import pycuda.autoinit
     import pycuda.driver as cuda
-    import tensorRT as trt
+    import tensorrt as trt
+
+    TensorRT = True
 
     EXPLICIT_BATCH = 1 << (int)(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
     TRT_LOGGER = trt.Logger(trt.Logger.INFO)
@@ -30,7 +33,8 @@ try:
     host_outputs = []
     cuda_outputs = []
     bindings = []
-except ImportError:
+
+except ImportError as e:
     TensorRT = False
     logger.info("TensorRTInference not found.")
 
@@ -79,11 +83,14 @@ class EmotionDetector:
         }
 
         self.face_model = self.load_face_model(backend_option)
-        self.emotion_model = self.load_trained_model(
-            model_name,
-            providers=providers,
-            fp16=fp16,
-        )
+        if self.model_option == "tensorrt":
+            self.engine = self.prepare_engine(model_name)
+        else:
+            self.emotion_model = self.load_trained_model(
+                model_name,
+                providers=providers,
+                fp16=fp16,
+            )
 
     def load_face_model(self, backend_option: int) -> cv2.dnn_Net:
         """
@@ -109,6 +116,34 @@ class EmotionDetector:
         face_model.setPreferableBackend(backend_target_pairs[backend_option][0])
         face_model.setPreferableTarget(backend_target_pairs[backend_option][1])
         return face_model
+
+    def prepare_engine(self, model_name):
+        if not TensorRT:
+            logger.error("TensorRTInference not found.")
+            return
+
+        model_path = f"ready_to_use_models/emotion_model/{model_name}"
+        with open(model_path, "rb") as f:
+            serialized_engine = f.read()
+
+        runtime = trt.Runtime(TRT_LOGGER)
+        engine = runtime.deserialize_cuda_engine(serialized_engine)
+
+        # create buffer
+        for binding in engine:
+            size = trt.volume(engine.get_binding_shape(binding)) * batch
+            host_mem = cuda.pagelocked_empty(shape=[size], dtype=np.float32)
+            cuda_mem = cuda.mem_alloc(host_mem.nbytes)
+
+            bindings.append(int(cuda_mem))
+            if engine.binding_is_input(binding):
+                host_inputs.append(host_mem)
+                cuda_inputs.append(cuda_mem)
+            else:
+                host_outputs.append(host_mem)
+                cuda_outputs.append(cuda_mem)
+
+        return engine
 
     def load_trained_model(self, model_name: str, providers: int, fp16: bool):
         """
@@ -140,33 +175,6 @@ class EmotionDetector:
             model = onnxruntime.InferenceSession(
                 model_path, providers=providers_options[providers]
             )
-
-        elif self.model_option == "tensorrt":
-            if not TensorRT:
-                logger.error("TensorRTInference not found.")
-                return
-
-            with open(model_path, "rb") as f:
-                serialized_engine = f.read()
-
-            runtime = trt.Runtime(TRT_LOGGER)
-            engine = runtime.deserialize_cuda_engine(serialized_engine)
-
-            # create buffer
-            for binding in engine:
-                size = trt.volume(engine.get_tensor_shape(binding)) * batch
-                host_mem = cuda.pagelocked_empty(shape=[size], dtype=np.float32)
-                cuda_mem = cuda.mem_alloc(host_mem.nbytes)
-
-                bindings.append(int(cuda_mem))
-                if engine.get_tensor_mode(binding) == trt.TensorIOMode.INPUT:
-                    host_inputs.append(host_mem)
-                    cuda_inputs.append(cuda_mem)
-                else:
-                    host_outputs.append(host_mem)
-                    cuda_outputs.append(cuda_mem)
-
-            return engine
 
         return model
 
@@ -239,11 +247,13 @@ class EmotionDetector:
 
                 elif self.model_option == "tensorrt":
                     stream = cuda.Stream()
-                    context = self.emotion_model.create_execution_context()
+                    context = self.engine.create_execution_context()
+
                     cuda.memcpy_htod_async(cuda_inputs[0], host_inputs[0], stream)
                     context.execute_v2(bindings)
                     cuda.memcpy_dtoh_async(host_outputs[0], cuda_outputs[0], stream)
                     stream.synchronize()
+                    
                     output = host_outputs[0]
                     return np.argmax(output)
 
