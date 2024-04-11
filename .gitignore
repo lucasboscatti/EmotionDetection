@@ -13,3 +13,5 @@ results/
 events.out.tfevents.*
 *.log
 .venv
+*.txt
+*.jpeg
