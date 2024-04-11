@@ -1,3 +1,7 @@
+import logging
+import os
+
+import gdown
 import torch
 from flask import Flask, Response, redirect, render_template, request, url_for
 
@@ -5,6 +9,9 @@ from emotion_detector import EmotionDetector
 
 CUDA = torch.cuda.is_available()
 app = Flask(__name__, template_folder="template")
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 
 class DeviceWindows:
@@ -24,7 +31,7 @@ class DeviceWindows:
 class DeviceJetsonNano:
     def __init__(
         self,
-        model_name="resnet18.engine",
+        model_name="resnet18_engine.trt",
         model_option="tensorrt",
         backend_option=1,
         providers=1,
@@ -38,9 +45,9 @@ class DeviceJetsonNano:
 class DeviceLinux:
     def __init__(
         self,
-        model_name="resnet18.engine",
-        model_option="tensorrt",
-        backend_option=3,
+        model_name="resnet18.onnx",
+        model_option="onnx",
+        backend_option=0,
         providers=1,
     ):
         self.model_name = model_name
@@ -107,7 +114,7 @@ def select_params(video_option, mode_option):
         model_names = {
             "pytorch": "best_checkpoint.tar",
             "onnx": "resnet18.onnx",
-            "engine": "resnet18.engine",
+            "engine": "resnet18_engine.trt",
         }
 
         return redirect(
@@ -143,3 +150,29 @@ def video_feed():
         detector.start_inference(),
         mimetype="multipart/x-mixed-replace; boundary=frame",
     )
+
+
+def download_model_files():
+    model_files = [
+        (
+            "ready_to_use_models/emotion_model/resnet18.onnx",
+            "1XmW8hCprZ6ZHGlU493Hp7jTl9iLXXI0F",
+        ),
+        (
+            "ready_to_use_models/emotion_model/resnet18_engine.trt",
+            "1oMQj-x9p7XwYV-nRuLiw_mrFv2MEuUH1",
+        ),
+        (
+            "ready_to_use_models/emotion_model/best_checkpoint.tar",
+            "1HSdcnLKckmVAhB5yaqYnI-wmonbN7-BX",
+        ),
+    ]
+    for file_path, id in model_files:
+        if not os.path.exists(file_path):
+            logging.info(f"{file_path} not found. Downloading...")
+            gdown.download(id=id, output=file_path)
+
+
+if __name__ == "__main__":
+    download_model_files()
+    app.run("0.0.0.0", 5000)

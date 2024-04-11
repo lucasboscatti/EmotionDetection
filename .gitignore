@@ -15,3 +15,5 @@ events.out.tfevents.*
 .venv
 *.txt
 *.jpeg
+*.trt
+*.onnx
