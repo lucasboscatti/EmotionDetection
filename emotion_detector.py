@@ -191,7 +191,7 @@ class EmotionDetector:
             return model
 
     def start_inference(self):
-        if self.video_option in ["0", "realsense", "2"]:
+        if self.video_option in ["0", "realsense_jetson", "realsense_windows"]:
             return self.process_video(self.video_option)
 
         mimetypes.init()
@@ -286,11 +286,13 @@ class EmotionDetector:
                 or else, the video is captured from the specified path.
         """
 
-        video_path = (
-            "v4l2src device=/dev/video2 ! video/x-raw, width=640, height=480 ! videoconvert ! video/x-raw,format=BGR ! appsink"
-            if video_path == "realsense"
-            else 0
-        )
+        video_config = {
+            "0": 0,
+            "realsense_jetson": "v4l2src device=/dev/video2 ! video/x-raw, width=640, height=480 ! videoconvert ! video/x-raw,format=BGR ! appsink",
+            "realsense_windows": 2,
+        }
+
+        video_path = video_config[video_path]
 
         logger.info("Video path: %s", video_path)
 
@@ -305,13 +307,10 @@ class EmotionDetector:
         while success:
             try:
                 self.process_frame(image)
-
                 _, frame = cv2.imencode(".jpg", image)
                 frame = frame.tobytes()
-
                 fps.update()
                 success, image = cap.read()
-
                 yield (
                     b"--frame\r\n" b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
                 )
@@ -341,7 +340,7 @@ class EmotionDetector:
 
         self.face_model.setInput(blob)
         predictions = self.face_model.forward()
-     
+
         if self.game_mode:
             self.game_mode_process(predictions, image)
         else:
