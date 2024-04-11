@@ -69,6 +69,8 @@ def index():
     if request.method == "POST":
         selected_device = request.form["device_option"]
         video_option = request.form["video_option"]
+        mode_option = request.form["mode_option"]
+
         if selected_device == "windows":
             device = DeviceWindows()
         elif selected_device == "jetson_nano":
@@ -77,7 +79,10 @@ def index():
             device = DeviceLinux()
         elif selected_device == "custom":
             return redirect(
-            url_for("select_params", video_option=video_option))
+                url_for(
+                    "select_params", video_option=video_option, mode_option=mode_option
+                )
+            )
         return redirect(
             url_for(
                 "video_feed",
@@ -86,13 +91,14 @@ def index():
                 backend_option=device.backend_option,
                 providers=device.providers,
                 video_option=video_option,
+                mode_option=mode_option,
             )
         )
     return render_template("index.html")
 
 
-@app.route("/select_params/<video_option>", methods=["GET", "POST"])
-def select_params(video_option):
+@app.route("/select_params/<video_option>/<mode_option>", methods=["GET", "POST"])
+def select_params(video_option, mode_option):
     if request.method == "POST":
         model_option = request.form["model_option"]
         backend_option = request.form["backend_option"]
@@ -112,6 +118,7 @@ def select_params(video_option):
                 backend_option=backend_option,
                 providers=providers,
                 video_option=video_option,
+                mode_option=mode_option,
             )
         )
     return render_template("select_params.html")
@@ -121,24 +128,21 @@ def select_params(video_option):
 def video_feed():
     """Video streaming route. Put this in the src attribute of an img tag."""
     args = request.args.to_dict()
+
+    modes = {"normal": False, "game": True}
+
     detector = EmotionDetector(
         model_name=args["model_name"],
         model_option=args["model_option"],
         backend_option=int(args["backend_option"]),
         providers=int(args["providers"]),
         video_option=args["video_option"],
+        game_mode=modes[args["mode_option"]],
     )
     return Response(
         detector.start_inference(),
         mimetype="multipart/x-mixed-replace; boundary=frame",
     )
 
-
-# detector = EmotionDetector(
-#     model_name=args.model_name,
-#     model_option=args.model_option,
-#     backend_option=args.backend_option,
-#     providers=args.providers,
-# )
 
 app.run(debug=True)

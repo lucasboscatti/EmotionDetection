@@ -70,7 +70,8 @@ class EmotionDetector:
         model_option: str,
         backend_option: int,
         providers: int,
-        game_mode: bool = False,
+        game_mode: bool,
+        video_option: str,
     ):
         """
         Initializes the Detector object.
@@ -80,8 +81,9 @@ class EmotionDetector:
             backend_option (int, optional): Backend option for OpenCV's DNN module. Default is 0 if CUDA is available, otherwise 1.
         """
         self.device = torch.device("cuda" if CUDA else "cpu")
-        self.model_option = model_option
+        self.video_option = video_option
         self.game_mode = game_mode
+        self.model_option = model_option
         self.bbox_predictions = {
             "bbox_left": [],
             "bbox_right": [],
@@ -188,21 +190,18 @@ class EmotionDetector:
 
             return model
 
-    def start_inference(self, file):
-        if file in ["0", "realsense", "2"]:
-            return self.process_video(file)
+    def start_inference(self):
+        if self.video_option in ["0", "realsense", "2"]:
+            return self.process_video(self.video_option)
 
         mimetypes.init()
-        mimestart = mimetypes.guess_type(file)[0]
+        mimestart = mimetypes.guess_type(self.video_option)[0]
 
         if mimestart != None:
             mimestart = mimestart.split("/")[0]
 
             if mimestart == "video":
-                return self.process_video(file)
-
-            elif mimestart == "image":
-                return self.process_image(file)
+                return self.process_video(self.video_option)
 
         logger.error("Invalid file type.")
 
@@ -276,18 +275,6 @@ class EmotionDetector:
 
         logger.error("No face detected.")
 
-    def process_image(self, img_name: str) -> None:
-        """
-        Processes and displays an image with emotion recognition.
-
-        Args:
-            img_name (str): The path to the input image file.
-        """
-        image = cv2.imread(img_name)
-        self.process_frame(image)
-        cv2.imshow("Output", image)
-        cv2.waitKey(0)
-
     def process_video(self, video_path: str):
         """
         Processes a video file, performing emotion recognition on each frame.
@@ -318,12 +305,6 @@ class EmotionDetector:
         while success:
             try:
                 self.process_frame(image)
-
-                if cv2.waitKey(1) & 0xFF == ord("q"):
-                    if self.game_mode:
-                        flag = calculate_winner(self.bbox_predictions)
-                        logger.info("O robô deve andar para: %s", flag)
-                    break
 
                 _, frame = cv2.imencode(".jpg", image)
                 frame = frame.tobytes()
@@ -360,11 +341,11 @@ class EmotionDetector:
 
         self.face_model.setInput(blob)
         predictions = self.face_model.forward()
-
+     
         if self.game_mode:
             self.game_mode_process(predictions, image)
-
-        self.default_mode_process(predictions, image)
+        else:
+            self.default_mode_process(predictions, image)
 
     def game_mode_process(self, predictions: np.ndarray, image: np.ndarray) -> None:
         """
@@ -472,3 +453,7 @@ class EmotionDetector:
                         1,
                         cv2.LINE_AA,
                     )
+
+    def game_mode_result(self):
+        flag = calculate_winner(self.bbox_predictions)
+        logger.info("O robô deve andar para: %s", flag)
