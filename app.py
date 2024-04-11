@@ -166,12 +166,18 @@ def download_model_files():
             "ready_to_use_models/emotion_model/best_checkpoint.tar",
             "1HSdcnLKckmVAhB5yaqYnI-wmonbN7-BX",
         ),
+        (
+            "ready_to_use_models/face_model/",
+            "https://drive.google.com/drive/folders/1Su2UpXX2Ub0iL3IYQwMgNfQfkKMe7pNr",
+        ),
     ]
     for file_path, id in model_files:
         if not os.path.exists(file_path):
             logging.info(f"{file_path} not found. Downloading...")
-            gdown.download(id=id, output=file_path)
-
+            try:
+                gdown.download(id=id, output=file_path)
+            except Exception as e:
+                gdown.download_folder(id=id, output="ready_to_use_models/")
 
 if __name__ == "__main__":
     download_model_files()

@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css"
           integrity="sha384-MCw98/SFnGE8fJT3GXwEOngsV7Zt27NXFoaoApmYm81iuXoPkFOJwJ8ERdknLPMO" crossorigin="anonymous">
 
-    <title>Live Streaming Demonstration</title>
+    <title>Emotion Detector Live Streaming</title>
 </head>
 <body>
 <div class="container">
@@ -17,14 +17,8 @@
         <div class="col-lg-8  offset-lg-2">
             <h3 class="mt-5">Live Streaming</h3>
             <img src="{{ url_for('video_feed', **args) }}" width="100%">
-        </div>
-    </div>
-    
-    <div class="row">
-        <div class="col-lg-8  offset-lg-2">
-            <form method="post" action="{{ url_for('tasks') }}">
-                <input type="submit" value="Stop/Start" name="stop" />
-            </form>
+            <button id="stopBtn" class="btn btn-danger mt-3">Stop</button>
+            <button id="calculateWinnerBtn" class="btn btn-primary mt-3 ml-2">Calculate Winner</button>
         </div>
     </div>
 </div>
