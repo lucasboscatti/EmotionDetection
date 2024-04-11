@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Device Configuration</title>
+    <!-- Include Bootstrap CSS -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+</head>
+
+<body>
+    <div class="container mt-5">
+        <form method="post">
+            <div class="form-group">
+                <label for="model_option">Model Option:</label>
+                <select class="form-control" id="model_option" name="model_option">
+                    <option value="onnx">PyTorch</option>
+                    <option value="onnx">ONNX</option>
+                    <option value="engine">TensorRT</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="backend_option">Backend Option:</label>
+                <select class="form-control" id="backend_option" name="backend_option" required>
+                    <option value="1">OpenCV implementation + CPU</option>
+                    <option value="2">CUDA + GPU (CUDA)</option>
+                    <option value="3">CUDA + GPU (CUDA FP16)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="providers">Providers:</label>
+                <select class="form-control" id="providers" name="providers" required>
+                    <option value="1">CPUExecutionProvider</option>
+                    <option value="2">CUDAExecutionProvider (CUDA)</option>
+                    <option value="3">TensorrtExecutionProvider (CUDA FP16)</option>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary">Enviar</button>
+        </form>
+    </div>
+</body>
+
+</html>
