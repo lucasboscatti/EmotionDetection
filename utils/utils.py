@@ -1,5 +1,7 @@
 import logging
 
+import numpy as np
+
 
 def setup_logger():
     logger = logging.getLogger(__name__)

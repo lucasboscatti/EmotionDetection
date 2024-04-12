@@ -18,3 +18,5 @@ events.out.tfevents.*
 *.trt
 *.onnx
 .vscode/
+*.bin
+*.xml
