@@ -179,6 +179,7 @@ def download_model_files():
             except Exception as e:
                 gdown.download_folder(id=id, output="ready_to_use_models/")
 
+
 if __name__ == "__main__":
     download_model_files()
     app.run("0.0.0.0", 5000)
