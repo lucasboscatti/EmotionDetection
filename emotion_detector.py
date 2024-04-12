@@ -244,17 +244,25 @@ class EmotionDetector:
                 bs, ncrops, c, h, w = inputs.shape
                 inputs = inputs.view(-1, c, h, w)
 
-                if self.model_option == "pytorch":
-                    outputs = self.emotion_model(inputs)
+                if self.model_option in ["pytorch", "onnx"]:
+                    if self.model_option == "onnx":
+                        inputs = {
+                            self.emotion_model.get_inputs()[0].name: to_numpy(inputs)
+                        }
+                        outputs = self.emotion_model.run(
+                            [self.emotion_model.get_outputs()[0].name], inputs
+                        )
+                        outputs = torch.from_numpy(outputs[0])
 
-                elif self.model_option == "onnx":
-                    inputs = {self.emotion_model.get_inputs()[0].name: to_numpy(inputs)}
-                    outputs = self.emotion_model.run(
-                        [self.emotion_model.get_outputs()[0].name], inputs
-                    )
-                    outputs = torch.from_numpy(outputs[0])
+                    elif self.model_option == "pytorch":
+                        outputs = self.emotion_model(inputs)
 
-                elif self.model_option == "tensorrt":
+                    outputs = outputs.view(bs, ncrops, -1)
+                    outputs = torch.sum(outputs, dim=1) / ncrops
+                    _, preds = torch.max(outputs.data, 1)
+                    return preds.cpu().numpy()[0]
+
+                if self.model_option == "tensorrt":
                     stream = cuda.Stream()
                     context = self.engine.create_execution_context()
 
@@ -265,13 +273,6 @@ class EmotionDetector:
 
                     output = host_outputs[0]
                     return np.argmax(output)
-
-                outputs = outputs.view(bs, ncrops, -1)
-                outputs = torch.sum(outputs, dim=1) / ncrops
-                _, preds = torch.max(outputs.data, 1)
-                preds = preds.cpu().numpy()[0]
-
-            return preds
 
         logger.error("No face detected.")
 
