@@ -67,12 +67,12 @@ class EmotionDetector:
 
     def __init__(
         self,
-        model_name: str,
-        model_option: str,
-        backend_option: int,
-        providers: int,
-        game_mode: bool,
-        video_option: str,
+        model_name: str = "resnet18.onnx",
+        model_option: str = "onnx",
+        backend_option: int = 1,
+        providers: int = 1,
+        game_mode: bool = False,
+        video_option: str = "0",
     ):
         """
         Initializes the Detector object.

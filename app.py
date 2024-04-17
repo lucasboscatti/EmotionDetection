@@ -90,17 +90,30 @@ def index():
                     "select_params", video_option=video_option, mode_option=mode_option
                 )
             )
-        return redirect(
-            url_for(
-                "video_feed",
-                model_name=device.model_name,
-                model_option=device.model_option,
-                backend_option=device.backend_option,
-                providers=device.providers,
-                video_option=video_option,
-                mode_option=mode_option,
+        if mode_option == "game":
+            return redirect(
+                url_for(
+                    "game_mode",
+                    model_name=device.model_name,
+                    model_option=device.model_option,
+                    backend_option=device.backend_option,
+                    providers=device.providers,
+                    video_option=video_option,
+                    mode_option=mode_option,
+                )
             )
-        )
+        elif mode_option == "normal":
+            return redirect(
+                url_for(
+                    "normal_mode",
+                    model_name=device.model_name,
+                    model_option=device.model_option,
+                    backend_option=device.backend_option,
+                    providers=device.providers,
+                    video_option=video_option,
+                    mode_option=mode_option,
+                )
+            )
     return render_template("index.html")
 
 
@@ -119,7 +132,7 @@ def select_params(video_option, mode_option):
 
         return redirect(
             url_for(
-                "video_feed",
+                "game_mode",
                 model_name=model_names[model_option],
                 model_option=model_option,
                 backend_option=backend_option,
@@ -131,21 +144,41 @@ def select_params(video_option, mode_option):
     return render_template("select_params.html")
 
 
+@app.route("/game_mode", methods=["GET", "POST"])
+def game_mode():
+    args = request.args.to_dict()
+    if request.method == "POST":
+        if request.form["submit_button"] == "Calcular o vencedor":
+            detector.game_mode_result()
+            return redirect(url_for("index"))
+    return render_template("game_mode.html", **args)
+
+
+@app.route("/normal_mode", methods=["GET", "POST"])
+def normal_mode():
+    args = request.args.to_dict()
+    return render_template("normal_mode.html", **args)
+
+
 @app.route("/video_feed", methods=["GET", "POST"])
 def video_feed():
     """Video streaming route. Put this in the src attribute of an img tag."""
-    args = request.args.to_dict()
+    model_name = request.args.get("model_name")
+    model_option = request.args.get("model_option")
+    backend_option = int(request.args.get("backend_option"))
+    providers = int(request.args.get("providers"))
+    video_option = request.args.get("video_option")
 
     modes = {"normal": False, "game": True}
+    mode_option = modes[request.args.get("mode_option")]
 
-    detector = EmotionDetector(
-        model_name=args["model_name"],
-        model_option=args["model_option"],
-        backend_option=int(args["backend_option"]),
-        providers=int(args["providers"]),
-        video_option=args["video_option"],
-        game_mode=modes[args["mode_option"]],
-    )
+    detector.model_name = model_name
+    detector.model_option = model_option
+    detector.backend_option = backend_option
+    detector.providers = providers
+    detector.video_option = video_option
+    detector.game_mode = mode_option
+
     return Response(
         detector.start_inference(),
         mimetype="multipart/x-mixed-replace; boundary=frame",
@@ -182,4 +215,5 @@ def download_model_files():
 
 if __name__ == "__main__":
     download_model_files()
+    detector = EmotionDetector()
     app.run("0.0.0.0", 5000)
