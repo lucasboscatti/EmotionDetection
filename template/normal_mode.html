@@ -15,9 +15,9 @@
 <div class="container">
     <div class="row">
         <div class="col-lg-8  offset-lg-2">
-            <h3 class="mt-5">Live Streaming</h3>
+            <h3 class="mt-5">Modo normal</h3>
             <img src="{{ url_for('video_feed', model_name=model_name, model_option=model_option, backend_option=backend_option, providers=providers, video_option=video_option, mode_option=mode_option) }}" width="100%">
-            <a href="/" class="btn btn-primary">Parar a execução</a>
+            <a href="/" class="btn btn-danger">Parar a execução</a>
         </div>
     </div>
 </div>

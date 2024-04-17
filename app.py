@@ -216,4 +216,4 @@ def download_model_files():
 if __name__ == "__main__":
     download_model_files()
     detector = EmotionDetector()
-    app.run("0.0.0.0", 5000)
+    app.run("0.0.0.0", 5000, debug=True)
