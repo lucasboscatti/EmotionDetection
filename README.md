@@ -12,16 +12,24 @@ This project is a facial emotion detection system developed by Lucas Boscatti. I
 git clone https://github.com/lucasboscatti/EmotionDetection.git
 ```
 
-2. Install the required dependencies:
+2. Install Docker
+
+3. Run the following command to build the Docker image:
 
 ```
-pip install -r requirements.txt
+docker build --tag python-docker .
 ```
 
-### Usage
-
-You can run the emotion detection system with different configurations using command-line arguments.
+4. Run the following command to run the Docker image:
 
 ```
-flask run --host=0.0.0.0 --port=5000
+docker run -p 5000:5000 python-docker
+```
+
+5. Visit http://localhost:5000 in your web browser to access the emotion detection system.
+
+6. To stop the Docker container, run the following command:
+
+```
+docker stop python-docker
 ```

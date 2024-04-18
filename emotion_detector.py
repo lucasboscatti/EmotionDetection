@@ -238,41 +238,44 @@ class EmotionDetector:
             logger.error("Error preprocessing image: ", e)
 
     def recognize_emotion(self, face: np.ndarray) -> str:
-        inputs = self.preprocess_image(face)
-        if inputs is not None:
-            with torch.no_grad():
-                bs, ncrops, c, h, w = inputs.shape
-                inputs = inputs.view(-1, c, h, w)
+        try:
+            inputs = self.preprocess_image(face)
+            if inputs is not None:
+                with torch.no_grad():
+                    bs, ncrops, c, h, w = inputs.shape
+                    inputs = inputs.view(-1, c, h, w)
 
-                if self.model_option in ["pytorch", "onnx"]:
-                    if self.model_option == "onnx":
-                        inputs = {
-                            self.emotion_model.get_inputs()[0].name: to_numpy(inputs)
-                        }
-                        outputs = self.emotion_model.run(
-                            [self.emotion_model.get_outputs()[0].name], inputs
-                        )
-                        outputs = torch.from_numpy(outputs[0])
+                    if self.model_option in ["pytorch", "onnx"]:
+                        if self.model_option == "onnx":
+                            inputs = {
+                                self.emotion_model.get_inputs()[0].name: to_numpy(inputs)
+                            }
+                            outputs = self.emotion_model.run(
+                                [self.emotion_model.get_outputs()[0].name], inputs
+                            )
+                            outputs = torch.from_numpy(outputs[0])
 
-                    elif self.model_option == "pytorch":
-                        outputs = self.emotion_model(inputs)
+                        elif self.model_option == "pytorch":
+                            outputs = self.emotion_model(inputs)
 
-                    outputs = outputs.view(bs, ncrops, -1)
-                    outputs = torch.sum(outputs, dim=1) / ncrops
-                    _, preds = torch.max(outputs.data, 1)
-                    return preds.cpu().numpy()[0]
+                        outputs = outputs.view(bs, ncrops, -1)
+                        outputs = torch.sum(outputs, dim=1) / ncrops
+                        _, preds = torch.max(outputs.data, 1)
+                        return preds.cpu().numpy()[0]
 
-                if self.model_option == "tensorrt":
-                    stream = cuda.Stream()
-                    context = self.engine.create_execution_context()
+                    if self.model_option == "tensorrt":
+                        stream = cuda.Stream()
+                        context = self.engine.create_execution_context()
 
-                    cuda.memcpy_htod_async(cuda_inputs[0], host_inputs[0], stream)
-                    context.execute_v2(bindings)
-                    cuda.memcpy_dtoh_async(host_outputs[0], cuda_outputs[0], stream)
-                    stream.synchronize()
+                        cuda.memcpy_htod_async(cuda_inputs[0], host_inputs[0], stream)
+                        context.execute_v2(bindings)
+                        cuda.memcpy_dtoh_async(host_outputs[0], cuda_outputs[0], stream)
+                        stream.synchronize()
 
-                    output = host_outputs[0]
-                    return np.argmax(output)
+                        output = host_outputs[0]
+                        return np.argmax(output)
+        except Exception as e:
+            logger.error("Error recognizing emotion: ", e)
 
     def process_video(self, video_path: str):
         """

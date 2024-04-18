@@ -20,3 +20,6 @@ events.out.tfevents.*
 .vscode/
 *.bin
 *.xml
+!requirements-emotion.txt
+*.caffemodel
+*.prototxt
