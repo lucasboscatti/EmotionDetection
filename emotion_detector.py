@@ -10,7 +10,6 @@ from imutils.video import FPS
 from PIL import Image
 
 from train.models import resnet
-from utils.face_detector import FaceDetector
 from utils.utils import calculate_winner, to_numpy
 
 logger = logging.getLogger()
@@ -110,11 +109,19 @@ class EmotionDetector:
         Returns:
             cv2.dnn_Net: The loaded face model for face detection.
         """
-        face_model = FaceDetector(
-            model="ready_to_use_models/face_model/ultra-lightweight-face-detection-rfb-320.xml",
-            confidence_thr=0.5,
-            overlap_thr=0.7,
+        face_model = cv2.dnn.readNetFromCaffe(
+            "ready_to_use_models/face_model/res10_300x300_ssd_iter_140000.prototxt",
+            "ready_to_use_models/face_model/res10_300x300_ssd_iter_140000.caffemodel",
         )
+
+        backend_target_pairs = [
+            [cv2.dnn.DNN_BACKEND_OPENCV, cv2.dnn.DNN_TARGET_CPU],
+            [cv2.dnn.DNN_BACKEND_CUDA, cv2.dnn.DNN_TARGET_CUDA],
+            [cv2.dnn.DNN_BACKEND_CUDA, cv2.dnn.DNN_TARGET_CUDA_FP16],
+        ]
+
+        face_model.setPreferableBackend(backend_target_pairs[backend_option][0])
+        face_model.setPreferableTarget(backend_target_pairs[backend_option][1])
         return face_model
 
     def prepare_engine(self, model_name):
@@ -168,8 +175,8 @@ class EmotionDetector:
 
             model.load_state_dict(
                 torch.load(
-                    "ready_to_use_models/emotion_model/best_checkpoint.tar",
-                    map_location=torch.device("cpu"),
+                    model_path,
+                    map_location=self.device,
                 )["model_state_dict"]
             )
 
@@ -248,7 +255,9 @@ class EmotionDetector:
                     if self.model_option in ["pytorch", "onnx"]:
                         if self.model_option == "onnx":
                             inputs = {
-                                self.emotion_model.get_inputs()[0].name: to_numpy(inputs)
+                                self.emotion_model.get_inputs()[0].name: to_numpy(
+                                    inputs
+                                )
                             }
                             outputs = self.emotion_model.run(
                                 [self.emotion_model.get_outputs()[0].name], inputs
@@ -328,17 +337,24 @@ class EmotionDetector:
         """
         Processes the current frame, detects faces, and recognizes emotions.
         """
-        bboxes, _ = self.face_model.inference(image)
+        blob = cv2.dnn.blobFromImage(
+            cv2.resize(image, (300, 300)),
+            1.0,
+            (300, 300),
+            (104.0, 177.0, 123.0),
+            swapRB=False,
+            crop=False,
+        )
 
-        if type(bboxes) == list:
-            logger.error("No face detected.")
+        self.face_model.setInput(blob)
+        predictions = self.face_model.forward()
+
+        if self.game_mode:
+            self.game_mode_process(predictions, image)
         else:
-            if self.game_mode:
-                self.game_mode_process(bboxes, image)
-            else:
-                self.default_mode_process(bboxes, image)
+            self.default_mode_process(predictions, image)
 
-    def game_mode_process(self, boxes: np.ndarray, image: np.ndarray) -> None:
+    def game_mode_process(self, predictions: np.ndarray, image: np.ndarray) -> None:
         """
         Processes and displays an image with emotion recognition in game mode.
 
@@ -346,13 +362,19 @@ class EmotionDetector:
             predictions (np.ndarray): The predictions from the face model.
             image (np.ndarray): The input image.
         """
-        if boxes.shape[0] == 2:
+        height, width = image.shape[:2]
+        prediction_1 = predictions[0, 0, 0, 2]
+        prediction_2 = predictions[0, 0, 1, 2]
 
-            box_1 = boxes[0].astype(int)
-            box_2 = boxes[1].astype(int)
-
-            x_min_1, y_min_1, x_max_1, y_max_1 = box_1
-            x_min_2, y_min_2, x_max_2, y_max_2 = box_2
+        if prediction_1 > 0.5 and prediction_2 > 0.5:
+            bbox_1 = predictions[0, 0, 0, 3:7] * np.array(
+                [width, height, width, height]
+            )
+            bbox_2 = predictions[0, 0, 1, 3:7] * np.array(
+                [width, height, width, height]
+            )
+            (x_min_1, y_min_1, x_max_1, y_max_1) = bbox_1.astype("int")
+            (x_min_2, y_min_2, x_max_2, y_max_2) = bbox_2.astype("int")
 
             cv2.rectangle(image, (x_min_1, y_min_1), (x_max_1, y_max_1), (0, 0, 255), 2)
             cv2.rectangle(image, (x_min_2, y_min_2), (x_max_2, y_max_2), (0, 0, 255), 2)
@@ -414,30 +436,31 @@ class EmotionDetector:
         else:
             logger.warning("Must have 2 faces to recognize emotions in game mode")
 
-    def default_mode_process(self, boxes, image):
-        num_boxes = boxes.shape[0]
-
-        for i in range(num_boxes):
-            box = boxes[i]
-            box = box.astype(int)
-
-            x_min, y_min, x_max, y_max = box
-            cv2.rectangle(image, (x_min, y_min), (x_max, y_max), (0, 0, 255), 2)
-
-            face = image[y_min:y_max, x_min:x_max]
-            emotion = self.recognize_emotion(face)
-
-            if emotion is not None:
-                cv2.putText(
-                    image,
-                    EmotionDetector.EMOTIONS[emotion],
-                    (x_min + 5, y_min - 20),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.8,
-                    (0, 255, 0),
-                    1,
-                    cv2.LINE_AA,
+    def default_mode_process(self, predictions, image):
+        height, width = image.shape[:2]
+        for i in range(predictions.shape[2]):
+            if predictions[0, 0, i, 2] > 0.5:
+                bbox = predictions[0, 0, i, 3:7] * np.array(
+                    [width, height, width, height]
                 )
+
+                (x_min, y_min, x_max, y_max) = bbox.astype("int")
+                cv2.rectangle(image, (x_min, y_min), (x_max, y_max), (0, 0, 255), 2)
+
+                face = image[y_min:y_max, x_min:x_max]
+                emotion = self.recognize_emotion(face)
+
+                if emotion is not None:
+                    cv2.putText(
+                        image,
+                        EmotionDetector.EMOTIONS[emotion],
+                        (x_min + 5, y_min - 20),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.8,
+                        (0, 255, 0),
+                        1,
+                        cv2.LINE_AA,
+                    )
 
     def game_mode_result(self):
         flag = calculate_winner(self.bbox_predictions)
